@@ -118,9 +118,9 @@ ui <- fluidPage(
     useShinyjs(),
     shinyjs:::extendShinyjs(text = jscode, functions = c("collapse")),
     # Application title
-    tags$div(style = "margin-top:40px;"), 
+    tags$div(style = "margin-top:50px;"), 
     titlePanel("Mortgage Calculator"),
-    tags$h4(style = "font-size:16px; color: #666666; margin-bottom:25px;", "Opportunity cost of getting a mortgage compared to other investment options"), 
+    tags$h4(style = "font-size:16px; color: #666666; margin-bottom:12px;", "Opportunity cost of getting a mortgage compared to other investment options"), 
     tags$head(
       tags$meta(name = "description", content = "A simple calculator to assess the opportunity cost of getting a mortgage taking into account the expected inflation and other investment options.")
     ),
