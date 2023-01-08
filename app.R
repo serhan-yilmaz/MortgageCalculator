@@ -9,6 +9,20 @@ library(rjson)
 library(clipr)
 #library(shinyCopy2clipboard)
 
+# For tooltips
+library(shinyhelper)
+library(shinyBS) 
+
+on_ready <- paste(
+  "$(function() {",
+  "$(document).on('shiny:connected', function(e) {",
+  "Shiny.setInputValue('initialized', 1);",
+  "});",
+  "",
+  "});",
+  sep = "\n"
+)
+
 collapseInput <- function(inputId, boxId) {
   tags$script(
     sprintf(
@@ -22,23 +36,25 @@ collapseInput <- function(inputId, boxId) {
   )
 }
 
-optionBox <- function(..., title = "", status = "primary", id = ""){
+optionBox <- function(..., title = "", status = "primary", id = "", collapsed = T, class = ""){
   colid = paste0(id, "_collapse")
   tags$div(
     id = paste0(id, "_wrapper"), 
-    box(id = id, status = status, width = NULL, collapsible = T, title = title, solidHeader = T, collapsed = T, 
+    box(id = id, class = class, status = status, width = NULL, collapsible = T, title = title, solidHeader = T, collapsed = collapsed, 
         ...
     ),
-    collapseInput(colid, boxId = id)
+    collapseInput(colid, boxId = id),
   )
 }
 
 option_set = list(
-  "house_price" = list(type = "numericInput"),
+  "house_price" = list(type = "anumericInput"),
   "mortgage_duration" = list(type = "selectInput"),
-  "mortgage_downpayment" = list(type = "numericInput"),
-  "monthly_fee" = list(type = "numericInput"),
-  "house_yearly_income" = list(type = "numericInput"),
+  "mortgage_downpayment" = list(type = "anumericInput"),
+  "monthly_fee" = list(type = "anumericInput"),
+  # "house_yearly_income" = list(type = "numericInput"),
+  "house_rent" = list(type = "anumericInput"),
+  "house_costs" = list(type = "anumericInput"),
   "house_income_invest_earnings" = list(type = "checkboxInput"),
   "house_income_investment_strategy" = list(type = "selectInput"),
   "investment_gain" = list(type = "sliderInput"),
@@ -46,6 +62,8 @@ option_set = list(
   "inflation" = list(type = "sliderInput"),
   "housing_inflation" = list(type = "sliderInput"),
   "adjust_by_inflation" = list(type = "checkboxInput"),
+  "retirement_ira_max_contribution" = list(type = "anumericInput"),
+  "retirement_roth_ira_max_contribution" = list(type = "anumericInput"),
   "checksum"="320932023409243"
 )
 
@@ -91,11 +109,15 @@ guide <- Cicerone$
        "Inflation",
        "Here, you can specify the expected yearly inflation rates (the default values are the 20-year CPI averages of USA, November 2002-2022)"
   )$
+  step("account_for_inflation_div", 
+       "Accounting for inflation in the results",
+       "If this tickmark is checked, the numbers in the results will be adjusted for expected inflation and reflect today's prices."
+  )$
   step("config_optionbox_wrapper", 
        "Configuration",
        "Here, you can save the selected options for future use or generate a link to share them with others."
   )$
-  step("verbatimText_main", 
+  step("main_output_div", 
        "Analysis Results",
        "Here, you can view the analysis results. For the money necessary to pay for the mortgage, several competing scenarios are considered to assess the opportunity cost: Retirement (tax-free) investment, tax-liable investment, inflation protection and so on."
   )$
@@ -111,12 +133,140 @@ $('#' + boxid).closest('.box').find('[data-widget=collapse]').click();
 }
 "
 
+value_div <- function(value_id){
+  uiOutput(value_id, style = "font-size:22px; text-align: center; width:100%; margin-top:0px;")
+}
+
+scenario_box <- function(title="", img_src, label = "", value_id="", margin=0){
+  wxx = 125;
+  st_mrg = paste0("margin:", sprintf("%.1f", wxx*margin/200), "px;");
+  wxx_t = wxx * (1 - margin/100);
+  p_left=6;
+  
+  
+  tags$div(style = "display:inline-flex;", 
+      # helper(
+      tags$div(
+      style = "display:inline-block; border: groove; padding:8px; border-width:1.5px; margin:4px; max-width:380px; min-height:160px;", 
+      tags$div(
+      tags$div(
+        style = "display:inline-block; vertical-align:middle; margin-right:auto; width:63%;", 
+        tags$div(title, style = "font-size: 18px; text-align: center; width:100%;"),
+        value_div(value_id)
+      ),
+      tags$img(height = wxx_t, width = wxx_t+p_left, src = img_src, style = st_mrg, style = "float:right;", style = sprintf("padding-left:%dpx;", p_left)),
+      ),
+      tags$div(style = "font-size: 15px; text-align:justify;", 
+        label
+      )
+    )
+    # , type = "markdown", content = "input_data_format")
+  )
+}
+
+boxes <- list(
+  scenario_box("Buy house and live in it", "icon_buy_house_and_live.png", value_id = "uioutput_buyhouseandliveinit", margin = 7, label = uiOutput("uioutput_buyhouseandliveinit_label")),
+  scenario_box("Buy house and rent", "icon_buy_house_and_rent.png", value_id = "uioutput_buyhouseandrent", label = uiOutput("uioutput_buyhouseandrent_label")),
+  scenario_box("Use the money for investment", "icon_investment_account.png", value_id = "uioutput_investment", margin = -15, label = "This scenario assumes the money to be used for mortgage are put into a tax-liable investment account instead of buying a house."),
+  scenario_box("Retirement Account ", "icon_retirement_investment.png", value_id = "uioutput_retirement", margin = -14, label = uiOutput("uioutput_retirement_account_label")),
+  scenario_box("Protect against inflation", "icon_protect_against_inflation.png", value_id = "uioutput_protectagainstinflation", margin = 14, label = "This scenario assumes that the value of money is retained against inflation, for example, by using TIPS or I-bonds."),
+  scenario_box("Keep in checking account", "icon_fail_grade4.png", value_id = "uioutput_keepincheckingaccount", margin = 10, label = "This scenario assumes all the money is deposited into a checking account without investment.")
+  )
+
+addchildren <- function(el, boxes){
+  el
+  nchild = length(el$children);
+  for(i in 1:length(boxes)){
+    box = boxes[[i]]
+    
+    el$children[[nchild+i]] = box
+  }
+  return(el);
+}
+
+
+generate_scenario_area <- function(boxes, nRow = 3){
+  outer = tags$div();
+  
+  iRow = 1;
+  iCol = 0;
+  cur_row = fluidRow();
+  for(i in 1:length(boxes)){
+    iCol = iCol + 1;
+    box = boxes[[i]]
+    
+    cur_row$children[[iCol]] = column(12/nRow, box);
+    if(iCol == nRow){
+      iCol = 0;
+      outer$children[[iRow]] = cur_row
+      cur_row = fluidRow();
+      iRow = iRow + 1;
+    }
+  }
+  if(iCol != 0){
+    outer$children[[iRow]] = cur_row
+  }
+  return(outer);
+}
+
+scenario_area <- generate_scenario_area(boxes);
+
+foInlineDiv <- function(...){
+  tags$div(
+    style = "display:inline-block;",
+    ...
+  )
+}
+
+anumericInput <- function(id, title, value, min, max, step=1){
+  shinyWidgets::autonumericInput(
+    inputId = id, 
+    label = title, 
+    currencySymbol = "$", 
+    align = "left", 
+    value = value, 
+    currencySymbolPlacement = "p",
+    decimalPlaces = 0,
+    digitGroupSeparator = ",",
+    decimalCharacter = ".",
+    minimumValue = min, 
+    maximumValue = max
+  )
+}
+
+
+mortgage_inputs <- list(
+  anumericInput("house_price", "House Price:", 379000, min = 0, max = 100000000, step = 100),
+  anumericInput("mortgage_downpayment", "Down Payment + Upfront Fees:", 75800, min = 0, max = 10000000, step = 100),
+  selectInput("mortgage_duration", "Mortgage Duration:", c("10 Years", "15 Years", "20 Years", "30 Years"), selected = "15 Years"),
+  anumericInput("monthly_fee", "Monthly Payment:", 2432, min = 0, max = 100000, step = 1)
+)
+
+house_income_inputs <- list(
+  anumericInput("house_rent", "House Monthly Rent Price:", 2300, min = 0, max = 100000, step = 10),
+  anumericInput("house_costs", "House Monthly Costs:", 1200, min = 0, max = 100000, step = 10),
+  tags$div(
+    style = "vertical-align: top; font-size: 14px;",
+    checkboxInput("house_income_invest_earnings", "Invest the earnings", value = T, width = NULL)),
+  selectInput("house_income_investment_strategy", "Investment Strategy:", c("Retirement Investment", "Tax-liable Investment", "Protect against inflation"), selected = "Tax-liable Investment")
+)
+
+retirement_limits <- list(
+  anumericInput("retirement_ira_max_contribution", "Contribution limit 401(k)", 23500, min = 0, max = 1000000),
+  anumericInput("retirement_roth_ira_max_contribution", "Contribution limit Roth IRA", 6500, min = 0, max = 1000000)
+)
+
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
     useToastr(),
     useShinyjs(),
     shinyjs:::extendShinyjs(text = jscode, functions = c("collapse")),
+    
+    tags$head(
+      tags$script(on_ready)
+    ),
+    
     # Application title
     tags$div(style = "margin-top:50px;"), 
     titlePanel("Mortgage Calculator"),
@@ -133,33 +283,55 @@ ui <- fluidPage(
     #   .setAttribute("content", x)});')),
     useShinydashboard(),
     use_cicerone(),
+    
+    tags$head(tags$style(HTML(gsub("##PLACEHOLDER##", "#227777", "
+                .box.box-solid:has(.requiredinputbox) >.box-header {
+                background:##PLACEHOLDER##;
+                color:#fff;
+                }
+                .box.box-solid:has(.requiredinputbox){
+                border-bottom-color:##PLACEHOLDER##;
+                border-left-color:##PLACEHOLDER##;
+                border-right-color:##PLACEHOLDER##;
+                border-top-color:##PLACEHOLDER##;
+                }
+                ")))),
 
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
         sidebarPanel(
           tags$div(id = "sidebar_option_div",tags$div(id = "sidebar_option_div2", 
-          numericInput("house_price", "House Price ($):", 379000, min = 1000, max = 10000000, step = 100),
-          optionBox(id = "mortgage_optionbox", title = "Mortgage Options", 
+          optionBox(id = "mortgage_optionbox", title = "Mortgage Options", status = "danger", collapsed = F, class = "requiredinputbox",
             tags$div(id = "mortgage_opts_div",
-            selectInput("mortgage_duration", "Mortgage Duration:", c("10 Years", "15 Years", "20 Years", "30 Years"), selected = "15 Years"),
-            numericInput("mortgage_downpayment", "Down Payment + Upfront Fees ($):", 75800, min = 0, max = 10000000, step = 100),
-            numericInput("monthly_fee", "Monthly Payment ($):", 2432, min = 0, max = 100000, step = 1),
+            generate_scenario_area(mortgage_inputs, nRow=2),
             ),
           ),
-          optionBox(id = "house_income_optionbox", title = "House Income", 
-            numericInput("house_yearly_income", "House Yearly Net Income ($):", 4700, min = 0, max = 100000, step = 10),
-            checkboxInput("house_income_invest_earnings", "Invest the earnings", value = T, width = NULL),
-            selectInput("house_income_investment_strategy", "Investment Strategy:", c("Retirement Investment", "Tax-liable Investment", "Protect against inflation"), selected = "Tax-liable Investment")
+          optionBox(id = "house_income_optionbox", title = "House Income", status = "danger", collapsed = F, class = "requiredinputbox",
+            generate_scenario_area(house_income_inputs, nRow=2),
+            # checkboxInput("house_income_invest_earnings", "Invest the earnings", value = T, width = NULL),
+            # selectInput("house_income_investment_strategy", "Investment Strategy:", c("Retirement Investment", "Tax-liable Investment", "Protect against inflation"), selected = "Tax-liable Investment")
+            # numericInput("house_yearly_income", "House Yearly Net Income ($):", 4700, min = 0, max = 100000, step = 10),
           ),
           optionBox(id = "investment_optionbox", title = "Investment", 
           sliderInput("investment_gain", "Expected Investment Gain Annual:", 
                       min = 0, max = 20, step  = 0.02, 
                       value = 7.72, post = "%"),
+            generate_scenario_area(retirement_limits, nRow = 2)
           ),
-          optionBox(id = "tax_optionbox", title = "Tax",
-          sliderInput("income_tax", "Income Tax (on investments):", 
+          optionBox(id = "tax_optionbox", title = "Tax and Fees",
+          sliderInput("income_tax_main", "Income Tax (for house rent):", 
+                      min = 0, max = 50, step  = 0.1, 
+                      value = 30, post = "%"),
+          sliderInput("income_tax", "Tax on Gains/Dividends (for investments):", 
                       min = 0, max = 50, step  = 0.1, 
                       value = 15, post = "%"),
+          sliderInput("capital_gains_tax", "Capital Gains Tax (for house resell):", 
+                      min = 0, max = 50, step  = 0.1, 
+                      value = 15, post = "%"),
+          anumericInput("capital_gains_exemption", "Capital Gains Tax Exemption (if primary residence)", 250000, min = 0, max = 10000000, step = 10),
+          sliderInput("realtor_commission_fee", "Realtor Commission Fee (on house resell):", 
+                      min = 0, max = 10, step  = 0.1, 
+                      value = 5, post = "%"),
           ),
           optionBox(id = "inflation_optionbox", title = "Expected Inflation",
             sliderInput("inflation", "Inflation:", 
@@ -169,8 +341,9 @@ ui <- fluidPage(
                         min = 0, max = 10, step  = 0.01, 
                         value = 2.77, post = "%"),
           ),
+          tags$div(id = "account_for_inflation_div", 
           checkboxInput("adjust_by_inflation", "Adjust numbers by inflation", value = T, width = NULL),
-          
+          ),
           optionBox(id = "config_optionbox", title = "Import/Export Config", status = "success", 
             textInput("config_name", "Configuration name (optional):", value = ""),
             tags$div(
@@ -196,17 +369,64 @@ ui <- fluidPage(
 
         # Show a plot of the generated distribution
         mainPanel(
+          # verbatimTextOutput("verbatimText_main"),
           tags$div(
-            id = "about_main_div", 
-            actionLink(style = "font-size: large;", "interactiveDemo", "Run Interactive Tutorial"),
-          ),
-          verbatimTextOutput("verbatimText_main")
+            style = "max-width:800px;", 
+            tags$h3("Hello World!", style = "margin-top:4px;"),
+            tags$p(style = "font-size: 16px; text-align:justify; margin-bottom:0px;", 
+                   "This is your Mortgage Calculator speaking! If you look outside, you can see the mortgages smiling with only around 5.21% yearly interest... Enough chitchat. Let's talk business.",
+                   # "In this tool, you can assess the opportunity cost of getting a mortgage, taking the expected inflation and other investment options into account."
+                   # "This is your Mortgage Calculator speaking! Here, you can assess the opportunity cost of getting a mortgage, taking the expected inflation and other investment options into account."
+                   # "Welcome to the Opportunity Cost Calculator for Home Buying and Investment! This tool allows you to compare the potential financial outcomes of purchasing a home and living in it, purchasing a home and renting it out, investing in a retirement account, or investing in other financial instruments. By inputting your financial information and desired investment strategy, you can make informed decisions about how to best use your money to achieve your long-term financial goals."
+                   ), 
+            tags$p(style = "font-size: 16px; text-align:justify; margin-top:2px;",
+                   "In this tool, you can assess the opportunity cost of getting a mortgage, taking the expected inflation and other investment options into account. Each box below shows the outcome of an alternative scenario using the money to pay off the mortgage for a different investment."
+            ),
+            tags$div(
+              id = "about_main_div", style = "font-size:17px; margin-bottom:10px;",
+              "Need help getting started? ", actionLink("interactiveDemo", " Run Interactive Tutorial"),
+            ),
+            ), 
+          
+          tags$div(id = "main_output_div",
+            tags$div(
+              uiOutput("uioutput_afterxyears_label", style = "font-size: 18px;"),
+            ),
+            addchildren(tags$div(style = "max-width:800px;"), boxes)
+          ), 
+          tags$div(
+            style = "font-size: 16px;", 
+            uiOutput("uioutput_inflation_adjusted_label", style = "font-size: 15px; color: #333333"),
+          )
+          # scenario_area,
+          # scenario_area,
         )
     )
 )
 
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
+  
+  observe_helpers(withMathJax = TRUE, help_dir = "helpfiles")
+  
+  observeEvent(input$initialized, {
+    # main_logging("Session Initialized")
+    # if(!dir.exists("logs/")){
+    #   dir.create("logs/")
+    # }
+    if(!started()){
+      #session$sendCustomMessage("changetitle", "Configuration: xkjfkjgj")
+      #html(id = "metadata_description_text", html=paste0("Configuration:", 'qwer'))
+      query <- parseQueryString(session$clientData$url_search)
+      query_s = paste(names(query), query, sep = "=", collapse=", ")
+      token = query[["token"]]
+      if(!is.null(token)){
+        foRestoreConfiguration(token)
+      }
+      started(TRUE)
+    }
+  })
+  
   
     mortgage_duration <- reactive({
       switch(input$mortgage_duration, 
@@ -238,6 +458,21 @@ server <- function(input, output, session) {
     inflation_adjustment_ <- reactive({
       (1+input$inflation/100)^mortgage_duration()
     })
+    
+    foMonthlyPayment <- function(loan_amount, yearly_interest, numyears){
+      monthly_interest = (1 + yearly_interest)^(1/12) - 1;
+      nMonth = numyears * 12;
+      Y = loan_amount;
+      r = monthly_interest;
+      t = nMonth;
+      X = Y * r / (1 - (1+r)^(-t));
+      return(X);
+    }
+    
+    scenarioA_investment <- reactive({
+      foSimulator(input$investment_gain/100)
+    })
+      
     
     foSimulator <- function(yearly_interest, 
                             initial = input$mortgage_downpayment,
@@ -273,6 +508,10 @@ server <- function(input, output, session) {
       return(total)
     }
     
+    retirement_effective_contribution <- reactive({
+      input$retirement_roth_ira_max_contribution + input$retirement_ira_max_contribution * (1 - input$income_tax_main/100)
+    })
+    
     scenarioA_investment <- reactive({
       foSimulator(input$investment_gain/100)
     })
@@ -289,51 +528,121 @@ server <- function(input, output, session) {
       foSimulator(input$housing_inflation/100, tax = F, initial = input$house_price, monthly_mortgage = 0)
     })
     
-    scenarioE_houserent <- reactive({
+    scenarioD_housevalue_after_commission <- reactive({
+      scenarioD_housenogain() * (1 - input$realtor_commission_fee/100)
+    })
+    
+    
+    foCapitalGainsCalc <- function(capital_gains_exemption = F){
+      value <- scenarioD_housevalue_after_commission()
+      if(input$adjust_by_inflation){
+        # Revert the inflation adjustment if applicable
+        value = value * inflation_adjustment_() 
+      }
+      gain = value - input$house_price
+      if(capital_gains_exemption){
+        taxable_gain = max(gain - input$capital_gains_exemption, 0)
+      } else {
+        taxable_gain = gain
+      }
+      total = value - taxable_gain * input$capital_gains_tax/100
+      if(input$adjust_by_inflation){
+        total = total / inflation_adjustment_() 
+      }
+      return(total)
+    }
+        
+    
+    scenarioD_housevalue_liveinit <- reactive({
+      foCapitalGainsCalc(capital_gains_exemption = T)
+    })
+    
+    scenarioD_housevalue_rent <- reactive({
+      foCapitalGainsCalc(capital_gains_exemption = F)
+    })
+    
+    fo_house_income <- function(tax_rent = input$income_tax_main, isprimaryresidence = F){
       if(input$house_income_invest_earnings){
         switch(input$house_income_investment_strategy,
-          "Retirement Investment" = {
-            yearly_interest <- input$investment_gain/100
-            tax = F
-          }, 
-          "Tax-liable Investment" = {
-            yearly_interest <- input$investment_gain/100
-            tax = T
-          },
-          "Protect against inflation" = {
-            yearly_interest <- input$inflation/100
-            tax = F
-          }
+               "Retirement Investment" = {
+                 yearly_interest <- input$investment_gain/100
+                 tax = F
+               }, 
+               "Tax-liable Investment" = {
+                 yearly_interest <- input$investment_gain/100
+                 tax = T
+               },
+               "Protect against inflation" = {
+                 yearly_interest <- input$inflation/100
+                 tax = F
+               }
         )
       } else {
         yearly_interest = 0
         tax = T
       }
-      scenarioD_housenogain() + foSimulator(
+      # monthly_income = input$house_yearly_income/12
+      monthly_income = input$house_rent * (1 - tax_rent/100) - input$house_costs
+      
+      if(isprimaryresidence){
+        house_val <- scenarioD_housevalue_liveinit()
+      } else {
+        house_val <- scenarioD_housevalue_rent()
+      }
+      
+      house_val + foSimulator(
         yearly_interest, initial = 0, tax = tax, 
-        monthly_mortgage = input$house_yearly_income/12, 
+        monthly_mortgage = monthly_income, 
         inflation_scaling = T, inflation_factor = input$housing_inflation/100)
+    }
+    
+    scenarioE_houserent <- reactive({
+      fo_house_income(isprimaryresidence = F)
+    })
+    
+    scenarioE_houseliveinit <- reactive({
+      fo_house_income(tax_rent = 0, isprimaryresidence = T)
+    })
+    
+    retirement_with_max_limit <- reactive({
+      initial = input$mortgage_downpayment;
+      monthly_mortgage = input$monthly_fee;
+      
+      yearly_max = retirement_effective_contribution()
+      yearly_remain = max(0, yearly_max - monthly_mortgage * 12)
+      initial1 = max(min(initial, yearly_remain), 0)
+      initial2 = initial - initial1
+      monthly_mortgage1 = max(min(yearly_max/12, monthly_mortgage), 0)
+      monthly_mortgage2 = monthly_mortgage - monthly_mortgage1
+      
+      # foSimulator(input$investment_gain/100, tax = F)
+      v1 <- foSimulator(initial = initial1, monthly_mortgage = monthly_mortgage1, input$investment_gain/100, tax = F)
+      v2 <- foSimulator(initial = initial2, monthly_mortgage = monthly_mortgage2, input$investment_gain/100, tax = T)
+      return(list(retirement = v1, investment = v2))
     })
     
     scenarioF_retirement_investment <- reactive({
-      foSimulator(input$investment_gain/100, tax = F)
+      x <- retirement_with_max_limit()
+      return(x$retirement + x$investment)
+    })
+    
+    scenarioF_retirement_only <- reactive({
+      x <- retirement_with_max_limit()
+      return(x$retirement)
     })
     
     downpaymentWarning = reactiveVal(FALSE);
     started = reactiveVal(FALSE)
     
-    output$verbatimText_main <- renderText({
-      if(!started()){
-        #session$sendCustomMessage("changetitle", "Configuration: xkjfkjgj")
-        #html(id = "metadata_description_text", html=paste0("Configuration:", 'qwer'))
-        query <- parseQueryString(session$clientData$url_search)
-        query_s = paste(names(query), query, sep = "=", collapse=", ")
-        token = query[["token"]]
-        if(!is.null(token)){
-          foRestoreConfiguration(token)
-        }
-        started(TRUE)
+    adjusted_star <- reactive({
+      if(input$adjust_by_inflation){
+        star_ = "*"
+      } else {
+        star_ = ""
       }
+    })
+    
+    output$verbatimText_main <- renderText({
       
       R = session$request
      # C = session$clientData
@@ -419,6 +728,7 @@ server <- function(input, output, session) {
           "selectInput" = {updateSelectInput(session, name, selected = value)},
           "sliderInput" = {updateSliderInput(session, name, value = value)},
           "checkboxInput" = {updateCheckboxInput(session, name, value = value)},
+          "anumericInput" = {updateAutonumericInput(session, name, value = value)},
           stop(paste0("Invalid option type: ", type))
         )
       }
@@ -476,11 +786,11 @@ server <- function(input, output, session) {
       )
     }
     
-    foUncollapseBoxIfNeeeded <- function(id, collapse = F){
+    foUncollapseBoxIfNeeeded <- function(id, collapse = F, nullval = T){
       colid = paste0(id, "_collapse");
       val = input[[colid]]
       if(is.null(val)){
-        val = T
+        val = nullval
       }
       if(val == !collapse){
         js$collapse(id)
@@ -492,8 +802,8 @@ server <- function(input, output, session) {
       if(!is.null(a)){
         b <- a$highlighted
         if(b == "sidebar_option_div2"){
-          foUncollapseBoxIfNeeeded("mortgage_optionbox")
-          foUncollapseBoxIfNeeeded("house_income_optionbox")
+          foUncollapseBoxIfNeeeded("mortgage_optionbox", nullval = F)
+          foUncollapseBoxIfNeeeded("house_income_optionbox", nullval = F)
           foUncollapseBoxIfNeeeded("investment_optionbox")
           foUncollapseBoxIfNeeeded("tax_optionbox")
           foUncollapseBoxIfNeeeded("inflation_optionbox")
@@ -529,6 +839,143 @@ server <- function(input, output, session) {
         jsonlite::write_json(reactive_inputset(), path = file, pretty = TRUE)
       }
     )
+    
+    output$uioutput_buyhouseandrent <- renderUI({
+      value = scenarioE_houserent() - scenarioD_housenogain()
+      tipify(
+        tags$span(paste0(sprintf("%.1fK", scenarioE_houserent()*1e-3), adjusted_star())),
+        tooltip_buyhouseandrent()
+        # paste0(sprintf("Equivalent to: <br> The house + %.1fK", value*1e-3), adjusted_star())
+      )
+    })
+    
+    tooltip_buyhouseandliveinit <- reactive({
+      val = scenarioE_houseliveinit() - scenarioD_housevalue_liveinit()
+      v1 <- paste0(sprintf("House value: %.1fK", scenarioD_housenogain()*1e-3), adjusted_star())
+      v2 <- paste0(sprintf("House resell value: %.1fK", scenarioD_housevalue_liveinit()*1e-3), adjusted_star())
+      v3 <- sprintf("(after %s%% realtor commission)", input$realtor_commission_fee)
+      v4 <- sprintf("+ %.1fK%s in savings", val*1e-3, adjusted_star())
+      return(paste(v1, v2, v3, v4, sep ="<br>"))
+    })
+    
+    tooltip_buyhouseandrent <- reactive({
+      val = scenarioE_houserent() - scenarioD_housevalue_rent()
+      v1 <- paste0(sprintf("House value: %.1fK", scenarioD_housenogain()*1e-3), adjusted_star())
+      v2 <- paste0(sprintf("House resell value: %.1fK", scenarioD_housevalue_rent()*1e-3), adjusted_star())
+      v3 <- sprintf("(after %s%% realtor commission", input$realtor_commission_fee)
+      v3_ <- sprintf("and %s%% capital gains tax)", input$capital_gains_tax)
+      v4 <- sprintf("+ %.1fK%s in savings", val*1e-3, adjusted_star())
+      return(paste(v1, v2, v3, v3_, v4, sep ="<br>"))
+    })
+    
+    output$uioutput_buyhouseandrent_label <- renderUI({
+      rent_after_tax = input$house_rent*(1-input$income_tax_main/100);
+      tags$span(
+        paste0("This scenario assumes the house is purchased to be rented out, resulting in a "),
+        tipify(tags$span(paste0("$", rent_after_tax - input$house_costs, "/mo")),
+               paste0("$", rent_after_tax, " rent (after ", input$income_tax_main, "% tax)", "<br> - $", input$house_costs, " costs")
+               ),
+        "saving.  "
+      )
+    })
+    
+    output$uioutput_buyhouseandliveinit_label <- renderUI({
+      tags$span(
+        paste0("This scenario assumes the house is purchased to be used as a primary residence, making a "),
+        tipify(tags$span(paste0("$", input$house_rent - input$house_costs, "/mo")),
+               paste0("$", input$house_rent, " rent - $", input$house_costs, " costs")
+        ),
+        "saving by not paying rent.  "
+      )
+    })
+    
+    output$uioutput_retirement_account_label <- renderUI({
+      roth_text = paste0("$", input$retirement_roth_ira_max_contribution, " Roth IRA contribution +")
+      
+      # "This scenario assumes the money to be used for mortgage is put into a retirement account, providing tax-free gains on the investments."
+      tags$span(
+        paste0("This scenario assumes that up to"),
+        tipify(tags$span(paste0("$", retirement_effective_contribution(), "/year")),
+               paste0(roth_text, "<br>", "$", input$retirement_ira_max_contribution*(1-input$income_tax_main/100), " 401(k) contribution <br> (after ", input$income_tax_main, "% tax)")
+        ),
+        "of the money is put into a retirement account, providing tax-free gains on the investments."
+      )
+    })
+    
+    output$uioutput_buyhouseandliveinit <- renderUI({
+      tipify(
+        tags$span(paste0(sprintf("%.1fK", scenarioE_houseliveinit()*1e-3), adjusted_star())),
+        tooltip_buyhouseandliveinit()
+        # paste0(tooltip_buyhouseandliveinit(), "<br>", "This scenario assumes $", input$house_rent, " saving is made every month by not paying rent.")
+      )
+    })
+    
+    output$uioutput_investment <- renderUI({
+      ratio = scenarioA_investment() / scenarioB_inflation()
+      tipify(
+        tags$span(paste0(sprintf("%.1fK", scenarioA_investment()*1e-3), adjusted_star())),
+        sprintf("%.2fx gain over inflation <br> after %d years", ratio, mortgage_duration())
+      )
+    })
+    
+    output$uioutput_retirement <- renderUI({
+      retirement_val = scenarioF_retirement_only()
+      investment_val = scenarioF_retirement_investment() - retirement_val
+      retirement_txt = paste0(sprintf("%.1fK", retirement_val*1e-3), adjusted_star())
+      investment_txt = paste0(sprintf("%.1fK", investment_val*1e-3), adjusted_star())
+      # ratio = scenarioF_retirement_investment() / scenarioB_inflation()
+      tipify(
+        tags$span(paste0(sprintf("%.1fK", scenarioF_retirement_investment()*1e-3), adjusted_star())),
+        sprintf("In Retirement Account: %s <br>In Tax-liable Investment: %s", retirement_txt, investment_txt)
+        # sprintf("%.2fx gain over inflation <br> after %d years", ratio, mortgage_duration())
+      )
+      # paste0(sprintf("%.1fK", scenarioF_retirement_investment()*1e-3), adjusted_star())
+    })
+    
+    output$uioutput_keepincheckingaccount <- renderUI({
+      ratio = 1 - scenarioC_checking() / scenarioB_inflation()
+      tipify(
+        tags$span(paste0(sprintf("%.1fK", scenarioC_checking()*1e-3), adjusted_star())),
+        sprintf("%.0f%% value loss against inflation <br> over %d years", 100*ratio, mortgage_duration())
+      )
+      # paste0(sprintf("%.1fK", scenarioC_checking()*1e-3), adjusted_star())
+    })
+    
+    output$uioutput_protectagainstinflation <- renderUI({
+      ratio = scenarioB_inflation() / scenarioC_checking() - 1
+      tipify(
+        tags$span(paste0(sprintf("%.1fK", scenarioB_inflation()*1e-3), adjusted_star())),
+        sprintf("The money has grown by %.0f%% <br> after %d years", 100*ratio, mortgage_duration())
+      )
+      # paste0(sprintf("%.1fK", scenarioC_checking()*1e-3), adjusted_star())
+    })
+    
+    # output$uioutput_protectagainstinflation <- renderUI({
+    #   paste0(sprintf("%.1fK", scenarioB_inflation()*1e-3), adjusted_star())
+    # })
+    
+    output$uioutput_afterxyears_label <- renderUI({
+      tags$b(
+        id = "afterxyears_label", 
+        sprintf("With %.1fK initial capital and $%.0f monthly payments, after %d years:", input$mortgage_downpayment*1e-3, input$monthly_fee, mortgage_duration()),
+      )
+    })
+    
+    output$uioutput_inflation_adjusted_label <- renderUI({
+      if(input$adjust_by_inflation)
+        tags$span(("*"), " Prices are adjusted by inflation and reflect today's prices")
+      else
+        return("")
+    })
+    
+    observe({
+      if(input$house_income_invest_earnings){
+        shinyjs::enable("house_income_investment_strategy")
+      } else {
+        shinyjs::disable("house_income_investment_strategy")
+      }
+    })
+    # uioutput_keepincheckingaccount
     
 }
 
