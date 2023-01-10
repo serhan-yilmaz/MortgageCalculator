@@ -114,7 +114,7 @@ guide <- Cicerone$
   )$
   step("house_income_optionbox_wrapper", 
        "House Income",
-       "Here, enter the expected income or savings made from the purchase of the house (substracting all costs, property tax, maintenance fees, or income tax if applicable)"
+       "Here, enter the expected income or savings made from the purchase of the house (substracting all costs, property tax, insurance, maintenance,  or HOA fees if applicable)"
   )$
   step("investment_optionbox_wrapper", 
        "Investment",
