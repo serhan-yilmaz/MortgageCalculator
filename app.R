@@ -83,6 +83,12 @@ option_set = list(
   "house_costs_insurance" = list(type = "anumericInput"),
   "house_costs_hoa_fee" = list(type = "anumericInput"),
   "house_costs_maintenance" = list(type = "anumericInput"),
+  "claim_itemized_deductions" = list(type = "checkboxInput"),
+  "property_tax_yearly" = list(type = "anumericInput"),
+  "state_tax_max_deduction" = list(type = "anumericInput"),
+  "state_tax_paid" = list(type = "anumericInput"),
+  "other_itemized_deductions" = list(type = "anumericInput"),
+  "standard_deductions" = list(type = "anumericInput"),
   "checksum"="320932023409243"
 )
 
@@ -251,7 +257,7 @@ foInlineDiv <- function(...){
   )
 }
 
-anumericInput <- function(id, title, value, min, max, step=1){
+anumericInput <- function(id, title, value, min, max, step=1, suffix = ""){
   shinyWidgets::autonumericInput(
     inputId = id, 
     label = title, 
@@ -263,7 +269,8 @@ anumericInput <- function(id, title, value, min, max, step=1){
     digitGroupSeparator = ",",
     decimalCharacter = ".",
     minimumValue = min, 
-    maximumValue = max
+    maximumValue = max,
+    suffixText = suffix,
   )
 }
 
@@ -345,7 +352,7 @@ ui <- fluidPage(
                 }
                 
                 .tooltip-inner {
-                min-width:130px;
+                min-width:170px;
                 }
                 ")))),
 
@@ -384,6 +391,30 @@ ui <- fluidPage(
           sliderInput("realtor_commission_fee", "Realtor Commission Fee (on house resell):", 
                       min = 0, max = 10, step  = 0.1, 
                       value = 5, post = "%"),
+          optionBox(id = "tax_itemized_deductions", title = "Itemized Deductions", status = "primary",
+            tipify(checkboxInput("claim_itemized_deductions", "File Itemized Deductions", value = T, width = NULL),
+                  "Claims mortgage interest and property tax deductions if applicable"),
+            tipify(anumericInput("property_tax_yearly", "Property Tax Yearly", 7800, min = 0, max = 10000000),
+                  "Enter the property tax of <br> the purchased house"     
+            ),
+            tipify(anumericInput("state_tax_max_deduction", "State/Local Tax Deduction Limit", 10000, min = 0, max = 10000000),
+                   "State and local taxes above this limit will not be deducted from the federal taxable income"
+            ),
+            tipify(anumericInput("state_tax_paid", "State and Local Income Taxes Paid", 0, min = 0, max = 10000000),
+                   "Enter state and local taxes paid besides the property tax"
+            ),
+            tipify(anumericInput("other_itemized_deductions", "Other itemized deductions", 0, min = 0, max = 10000000),
+                  "Enter other Schedule A deductions besides mortgage interest and state/local taxes here (if any)"     
+            ),
+            tipify(
+            anumericInput("standard_deductions", "Standard Deductions", 13850, min = 0, max = 10000000),
+                  "This is the amount that will be compared against to see if itemized deductions from the mortgage interest provides a tax advantage."
+            ),
+            tipify(
+              anumericInput("average_taxes_saved_itemized", "Average Taxes Saved Yearly:", 0, min = 0, max = 10000000, suffix = "*"),
+              "This fields displays the average taxes that can be saved from the purchase of the house over the mortgage duration. <br> *Average is adjusted for inflation"
+            )
+          )
           ),
           optionBox(id = "inflation_optionbox", title = "Expected Inflation",
             sliderInput("inflation", "Inflation:", 
@@ -393,9 +424,12 @@ ui <- fluidPage(
                         min = 0, max = 10, step  = 0.01, 
                         value = 2.77, post = "%"),
           ),
+          # tipify(
           tags$div(id = "account_for_inflation_div", 
-          checkboxInput("adjust_by_inflation", "Adjust numbers by inflation", value = T, width = NULL),
+            checkboxInput("adjust_by_inflation", "Adjust numbers by inflation", value = T, width = NULL),
           ),
+          #   "Check this mark to adjust the output values to reflect today's prices"
+          # ),
           optionBox(id = "config_optionbox", title = "Import/Export Config", status = "success", 
             textInput("config_name", "Configuration name (optional):", value = ""),
             tags$div(
@@ -479,6 +513,7 @@ server <- function(input, output, session) {
         foRestoreConfiguration(token)
       }
       started(TRUE)
+      shinyjs::disable("average_taxes_saved_itemized")
     }
   })
   
@@ -529,16 +564,16 @@ server <- function(input, output, session) {
       foSimulator(input$investment_gain/100)
     })
     
-    foComputeRetirementInitial <- function(initial, retirement_yearly_max, monthly_mortgage, monthly_inflation, inflation_factor){
-      total = 0
-      monthly_inflation = 1
-      for(iMonth in (1:12)){
-        total = total + monthly_mortgage * monthly_inflation
-        monthly_inflation = monthly_inflation * ((1+inflation_factor)^(1/12));
-      }
-      yearly_remain = max(0, retirement_yearly_max - total)
-      retirement_initial = max(min(initial, yearly_remain), 0)
-    }
+    # foComputeRetirementInitial <- function(initial, retirement_yearly_max, monthly_mortgage, monthly_inflation, inflation_factor){
+    #   total = 0
+    #   monthly_inflation = 1
+    #   for(iMonth in (1:12)){
+    #     total = total + monthly_mortgage * monthly_inflation
+    #     monthly_inflation = monthly_inflation * ((1+inflation_factor)^(1/12));
+    #   }
+    #   yearly_remain = max(0, retirement_yearly_max - total)
+    #   retirement_initial = max(min(initial, yearly_remain), 0)
+    # }
     
     foSimulator <- function(yearly_interest, 
                             initial = input$mortgage_downpayment,
@@ -553,7 +588,8 @@ server <- function(input, output, session) {
                             retirement = F,
                             retirement_yearly_max = retirement_effective_contribution(),
                             retirement_yearly_inflation = input$inflation/100,
-                            retirement_list_output = F
+                            retirement_list_output = F,
+                            extra_monthly_input = c()
                             ){
 
       monthly_inflation = 1
@@ -571,25 +607,35 @@ server <- function(input, output, session) {
       }
       
       if(retirement == TRUE){
-        retirement_account = foComputeRetirementInitial(
-          initial = initial,
-          retirement_yearly_max = retirement_yearly_max, 
-          monthly_mortgage = monthly_mortgage, 
-          monthly_inflation = monthly_inflation, 
-          inflation_factor = inflation_factor
-        );
+        # retirement_account = foComputeRetirementInitial(
+        #   initial = initial,
+        #   retirement_yearly_max = retirement_yearly_max, 
+        #   monthly_mortgage = monthly_mortgage, 
+        #   monthly_inflation = monthly_inflation, 
+        #   inflation_factor = inflation_factor
+        # );
+        retirement_account = min(initial, retirement_yearly_max)
         total = initial - retirement_account
+        retirement_yearly_contribution = retirement_account
       } else {
         total = initial
         retirement_account = 0
+        retirement_yearly_contribution = 0
       }
       
       for(iMonth in (1:nMonth)){
         monthly_input = monthly_mortgage * monthly_inflation
+        if(length(extra_monthly_input) >= iMonth){
+          if(!is.null(extra_monthly_input[iMonth])){
+            monthly_input = monthly_input + extra_monthly_input[iMonth]
+          }
+        }
         if(retirement == TRUE){
           yearly_max = retirement_yearly_max * yearly_inflation
-          retirement_input = max(min(yearly_max/12, monthly_input), 0)
+          yearly_remain = yearly_max - retirement_yearly_contribution
+          retirement_input = min(yearly_remain, monthly_input)
           investment_input = monthly_input - retirement_input
+          retirement_yearly_contribution = retirement_yearly_contribution + retirement_input
         } else {
           investment_input = monthly_input
           retirement_input = 0
@@ -599,6 +645,7 @@ server <- function(input, output, session) {
         monthly_inflation = monthly_inflation * ((1+inflation_factor)^(1/12));
         if((iMonth %% 12) == 0){
           yearly_inflation = yearly_inflation * (1+retirement_yearly_inflation)
+          retirement_yearly_contribution = 0
         }
       }
       if(adjust_by_inflation){
@@ -718,12 +765,19 @@ server <- function(input, output, session) {
       } else {
         house_val <- scenarioD_housevalue_rent()
       }
+      extra_monthly_input = c()
+      if(input$claim_itemized_deductions){
+        extra_monthly_input = itemized_tax_gain()$monthly_inputs
+      }
       
       x = foSimulator(
         yearly_interest, initial = 0, tax = tax, 
         monthly_mortgage = monthly_income, 
         inflation_scaling = T, inflation_factor = input$housing_inflation/100,
-        retirement = retirement, retirement_list_output = T)
+        retirement = retirement, retirement_list_output = T, 
+        extra_monthly_input = extra_monthly_input)
+      # message(x)
+      
       if(retirement == TRUE){
         out = x
       } else {
@@ -926,10 +980,12 @@ server <- function(input, output, session) {
           #html("metadata_description_text", html=paste0("Configuration:", name))
           updateTextInput(session, "config_name", value = name)
           name = paste0("'", name, "'")
+          extra_timer = 450
         } else {
           name = ""
+          extra_timer = 0
         }
-        show_alert(title = paste0("Configuration ", name, " successfully restored."), showCloseButton = F, type = "success", btn_labels = NA, timer = 1000, showConfirmButton = F)
+        show_alert(title = paste0("Configuration ", name, " successfully restored."), showCloseButton = F, type = "success", btn_labels = NA, timer = 1000+extra_timer, showConfirmButton = F)
       }, error = function(e){
         show_alert(title = "An error occurred while restoring the config.", showCloseButton = F, type = "error", btn_labels = NA, timer = 1000, showConfirmButton = F)
         message(as.character(e))
@@ -1036,13 +1092,30 @@ server <- function(input, output, session) {
       return(paste(v1, v2, v3, v3_, v4, sep ="<br>"))
     })
     
+    itemizedTaxAdvantage <- function(){
+      avg_gain = itemized_tax_gain()$avg_gain / 12
+      if(itemized_tax_gain()$enabled && avg_gain >= 1){
+        return(sprintf("%s+ $%.0f tax savings", "<br>", avg_gain))
+      } else {
+        return("") 
+      }
+    }
+    
+    tax_advantage <- reactive({
+      avg_gain = itemized_tax_gain()$avg_gain / 12
+      if(itemized_tax_gain()$enabled){
+        return(round(avg_gain)) 
+      }
+      return(0)
+    })
+    
     output$uioutput_buyhouseandrent_label <- renderUI({
       rent_after_tax = input$house_rent*(1-input$income_tax_main/100);
       # tags$span(
         # paste0("This scenario assumes the house is purchased to be rented out, resulting in a "),
-        tipify(tags$span(paste0("$", rent_after_tax - input$house_costs, "*/mo")),
+        tipify(tags$span(paste0("$", rent_after_tax - input$house_costs + tax_advantage(), "*/mo")),
                paste0(paste0("$", rent_after_tax, " rent (after ", input$income_tax_main, "% tax)", "<br> - $", input$house_costs, " costs"), 
-                      "<br>", "*Scales with housing inflation"),
+                      itemizedTaxAdvantage(), "<br>", "*Scales with housing inflation"),
                )
         # "saving.  "
       # )
@@ -1051,9 +1124,9 @@ server <- function(input, output, session) {
     output$uioutput_buyhouseandliveinit_label <- renderUI({
       # tags$span(
         # paste0("This scenario assumes the house is purchased to be used as a primary residence, making a "),
-        tipify(tags$span(paste0("$", input$house_rent - input$house_costs, "*/mo")),
+        tipify(tags$span(paste0("$", input$house_rent - input$house_costs + tax_advantage(), "*/mo")),
                paste0(paste0("$", input$house_rent, " rent - $", input$house_costs, " costs"),
-                      "<br>", "*Scales with housing inflation")
+                      itemizedTaxAdvantage(), "<br>", "*Scales with housing inflation")
         )
       #   "saving by not paying rent.  "
       # )
@@ -1151,6 +1224,157 @@ server <- function(input, output, session) {
       value = input$house_costs_property_tax + input$house_costs_insurance + 
               input$house_costs_hoa_fee + input$house_costs_maintenance;
       updateAutonumericInput(session, "house_costs", value = value)
+      updateAutonumericInput(session, "property_tax_yearly", value = input$house_costs_property_tax*12)
+    })
+    
+    foComputeMonthlyPayment_ <- function(loan_amount, monthly_interest, numMonths){
+      if(monthly_interest <= 0){
+        return(loan_amount/numMonths)
+      }
+      Y = loan_amount
+      r = monthly_interest
+      t = numMonths
+      return (r*Y / (1 - (1+r)^(-t)))
+    }
+    
+    foComputeMonthlyPayment <- function(loan_amount, yearly_interest, numYears){
+      monthly_interest = (1 + yearly_interest)^(1/12) - 1;
+      foComputeMonthlyPayment_(loan_amount, monthly_interest, numYears * 12)
+    }
+    
+    binarySearch <- function (targetY, minX, maxX, foComputeYfromX, delta = 0){
+      range = maxX - minX;
+      if(range <= 0){
+        return(NULL)
+      }
+      min_value = foComputeYfromX(minX)
+      max_value = foComputeYfromX(maxX)
+      for (numIter in 1:100){
+        if(abs(max_value - targetY) <= delta){
+          return(maxX);
+        }
+        if(abs(min_value - targetY) <= delta){
+          return(minX);
+        }
+        if(max_value > targetY){
+          if(min_value < targetY){
+            break; # Target is within Maximum and Minimum values
+          } else {
+            # Minimum is larger than Target
+            minX = minX - range
+            min_value = foComputeYfromX(minX)
+          }
+        } else {
+          if(min_value < targetY){
+            # Maximum is less than Target
+            maxX = maxX + range
+            max_value = foComputeYfromX(maxX)
+          } else {
+            # Both minimum and maximum is out of range
+            minX = minX - range
+            maxX = maxX + range
+            min_value = foComputeYfromX(minX)
+            max_value = foComputeYfromX(maxX)
+          }
+        }
+        range = maxX - minX;
+        if(numIter == 100){
+          message('last iter - range search')
+        }
+      }
+      
+      for (numIter in 1:1000){
+        currentX = (maxX + minX)/2
+        current_value = foComputeYfromX(currentX)
+        if(abs(current_value - targetY) <= delta){
+          return(currentX);
+        }
+        if(current_value > targetY){
+          maxX = currentX
+        } else {
+          minX = currentX
+        }
+        if(numIter == 1000){
+          message('last iter - value search')
+        }
+      }
+      return(currentX)
+    }
+    
+    effectiveMonthlyInterestRate <- reactive({
+      loan = input$house_price - input$mortgage_downpayment
+      minX = -0.1/12
+      maxX = 0.1/12
+      numMonth = mortgage_duration() * 12
+      foMonthly = function(x){
+        foComputeMonthlyPayment_(loan, x, numMonth)
+      }
+      value = binarySearch(input$monthly_fee, minX, maxX, foMonthly, delta = 1)
+      message(sprintf('Yearly Interest: %.1f%%', value*12*100))
+      return(value)
+    })
+    
+    itemized_tax_gain <- reactive({
+      property_tax = input$property_tax_yearly
+      state_tax_paid = input$state_tax_paid
+      state_tax_max_deduction = input$state_tax_max_deduction
+      other_itemized_deductions = input$other_itemized_deductions
+      standard_deductions = input$standard_deductions
+      
+      inflation = 1+input$inflation/100
+      housing_inflation = 1+input$housing_inflation/100
+      
+      inflation_factor = 1
+      inflation_factor_housing = 1
+      nYear = mortgage_duration()
+      total_gain = 0
+      
+      monthly_payment = input$monthly_fee
+      interest_rate = effectiveMonthlyInterestRate()
+      total = input$house_price - input$mortgage_downpayment
+      monthly_inputs = vector('numeric', nYear * 12)
+      for(iYear in 1:nYear){
+        interest_total = 0
+        for (iMonth in (1:12)){
+          interest = total * interest_rate;
+          total = total + interest - monthly_payment
+          interest_total = interest_total + interest
+          if(total < 0){
+            total = 0
+          }
+        }
+        mortgage_interest = interest_total
+        
+        state_tax_paid_ = state_tax_paid * inflation_factor
+        property_tax_ = property_tax * inflation_factor_housing
+        state_tax_max_deduction_ = state_tax_max_deduction * inflation_factor
+        standard_deductions_ = standard_deductions * inflation_factor
+        other_itemized_deductions_ = other_itemized_deductions * inflation_factor
+        
+        state_tax_with = min(state_tax_max_deduction_, property_tax_ + state_tax_paid_)
+        state_tax_without = min(state_tax_max_deduction_, state_tax_paid_)
+        
+        total_deduction_with = max(standard_deductions_, state_tax_with + mortgage_interest + other_itemized_deductions_)
+        total_deduction_without = max(standard_deductions_, state_tax_without + other_itemized_deductions_)
+        
+        yearly_tax_gain = (total_deduction_with - total_deduction_without) * input$income_tax_main/100
+        yearly_tax_gain_adjusted = yearly_tax_gain / inflation_factor_housing
+        
+        total_gain = total_gain + yearly_tax_gain_adjusted
+        
+        inflation_factor = inflation_factor * inflation
+        inflation_factor_housing = inflation_factor_housing * housing_inflation
+        monthly_inputs[(iYear-1)*12+12] = yearly_tax_gain
+      }
+      avg_gain = total_gain / nYear
+      return(list(avg_gain = avg_gain, 
+                  enabled = input$claim_itemized_deductions, 
+                  monthly_inputs = monthly_inputs))
+    })
+    
+    observe({
+      avg_gain = itemized_tax_gain()$avg_gain
+      updateAutonumericInput(session, "average_taxes_saved_itemized", value = avg_gain)
     })
     
     # uioutput_keepincheckingaccount
