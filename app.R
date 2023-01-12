@@ -223,11 +223,22 @@ boxLabels <- list(
   "retirement" = foBoxLabel("This scenario assumes that up to", "uioutput_retirement_account_label", "of the money is put into a retirement account, providing tax-free gains on the investments.")
 )
 
-airbnb_box <- scenario_box("Buy house and AirBnB", "icon_buy_house_and_airbnb.png", margin=5, value_id = "uioutput_buyhouseandairbnb", label = boxLabels$airbnb)
 
+foHouseLinks <- function(id = "", label){
+  tipify(
+    actionLink(id, label = label, icon = icon("book"), style = "color:#000;"),
+    "Click to view how much money is needed to invest in this option."
+  )
+}
+
+house_link <- foHouseLinks(id = "link_buyhouseandliveinit", label = "Buy house and live in it")
+houserent_link <- foHouseLinks(id = "link_buyhouseandrent", label = "Buy house and rent")
+houseairbnb_link <- foHouseLinks(id = "link_buyhouseandairbnb", label = "Buy house and AirBnB")
+
+airbnb_box <- scenario_box(houseairbnb_link, "icon_buy_house_and_airbnb.png", margin=5, value_id = "uioutput_buyhouseandairbnb", label = boxLabels$airbnb)
 boxes <- list(
-  scenario_box("Buy house and live in it", "icon_buy_house_and_live.png", value_id = "uioutput_buyhouseandliveinit", margin = 7, label = boxLabels$liveinit),
-  scenario_box("Buy house and rent", "icon_buy_house_and_rent.png", value_id = "uioutput_buyhouseandrent", label = boxLabels$rent),
+  scenario_box(house_link, "icon_buy_house_and_live.png", value_id = "uioutput_buyhouseandliveinit", margin = 7, label = boxLabels$liveinit),
+  scenario_box(houserent_link, "icon_buy_house_and_rent.png", value_id = "uioutput_buyhouseandrent", label = boxLabels$rent),
   uiOutput("uioutput_airbnb", inline = T),
   scenario_box("Use the money for investment", "icon_investment_account.png", value_id = "uioutput_investment", margin = -15, label = "This scenario assumes the money to be used for mortgage are put into a tax-liable investment account instead of buying a house."),
   scenario_box("Retirement Account ", "icon_retirement_investment.png", value_id = "uioutput_retirement", margin = -14, label = boxLabels$retirement),
@@ -1660,6 +1671,173 @@ server <- function(input, output, session) {
       } else {
         shinyjs::show("scenariobox-keepincheckingaccount")
       }
+    })
+    
+    foRequiredMoneyByYears <- function(showrent = T, income, gains, costs = input$house_costs){
+      gain = 0
+      inflation_factor = 1 
+      inflation_factor_housing = 1
+      initial = input$mortgage_downpayment
+      txt_out <- sprintf("Initial Capital: $%.0f\n", initial)
+      adjust_by_inflation = input$adjust_by_inflation
+      
+      total_payments = initial
+      total_payments_adj = initial
+      for(iYear in 1:mortgage_duration()){
+        if(iYear > 1){
+          gain = gains$monthly_inputs[(iYear-1)*12]/12
+        }
+        if(!gains$enabled){
+          gain = 0
+        }
+        if(iYear == 1){
+          year_txt = "first"
+        }
+        if(iYear == 2){
+          year_txt = "second"
+        }
+        if(iYear == 3){
+          year_txt = "third"
+        }
+        if(iYear >= 4){
+          year_txt = sprintf("%dth", iYear)
+        }
+        rent = input$house_rent * inflation_factor_housing
+        costs_ = costs * inflation_factor_housing
+        mortgage = input$monthly_fee
+        tax_return_txt = "(with tax returns)"
+        if(gain == 0){
+          tax_return_txt = ""
+        }
+        
+        x1 = sprintf("At %s year:", year_txt)
+        if(showrent){
+          additional = mortgage + costs_ - rent - gain
+          x2 = sprintf("--> $%.0f/mo rent money + $%.0f/mo additional %s", round(rent, -1), additional, tax_return_txt)
+        } else {
+          income_ = (income * inflation_factor_housing) * (1 - input$income_tax_main/100)
+          additional = mortgage + costs_ - income_ - gain
+          x2 = sprintf("--> $%.0f/mo payments %s", additional, tax_return_txt)
+        }
+        txt_out = paste(txt_out, x1, x2, sep = "\n")
+        
+        total_payments = total_payments + additional*12
+        total_payments_adj = total_payments_adj + additional*12 / inflation_factor
+        
+        inflation_factor = inflation_factor * (1+input$inflation/100)
+        inflation_factor_housing = inflation_factor_housing * (1+input$housing_inflation/100)
+      }
+      if(showrent){
+        house_resell_val <- scenarioD_housevalue_liveinit()
+        rentmoney_txt = "(excluding rent money)"
+      } else {
+        house_resell_val <- scenarioD_housevalue_rent()
+        rentmoney_txt = ""
+      }
+      
+      iYear = 16
+      gain = gains$monthly_inputs[(iYear-1)*12]/12
+      if(!gains$enabled){
+        gain = 0
+      }
+      # total_payments = total_payments - gain*12
+      # total_payments_adj = total_payments_adj - gain*12 / inflation_factor
+      
+      if(adjust_by_inflation){
+        total_payments_ = total_payments_adj
+        prices_adjusted_txt = "\n* Prices are adjusted by inflation and reflect today's prices"
+        inflation_factor_ = inflation_factor
+        inflation_factor__ = 1
+      } else {
+        total_payments_ = total_payments
+        prices_adjusted_txt = ""
+        inflation_factor_ = 1
+        inflation_factor__ = inflation_factor_housing
+      }
+      avg_payments_ = (total_payments_ - initial) / (12 * mortgage_duration())
+      gain_total = house_resell_val - total_payments_ + gain*12 / inflation_factor_;
+      monthly_gain = gain_total / (12 * mortgage_duration())
+      
+      if(showrent){
+        monthly_income = (input$house_rent - costs) * 
+                        inflation_factor_housing / inflation_factor_
+        income_txt = "savings from rent"
+      } else {
+        monthly_income = (income - costs) * (1 - input$income_tax_main/100) *
+                        inflation_factor_housing / inflation_factor_ 
+        income_txt = "income"
+      }
+      
+      x1 = sprintf("At %dth year:", mortgage_duration() + 1)
+      x2 = "--> Mortgage fully paid off"
+      x3 = sprintf("--> House resell value: $%.1fK%s", house_resell_val/1000, adjusted_star())
+      x4 = sprintf("--> Total payments made: $%.1fK%s %s", total_payments_/1000, adjusted_star(), rentmoney_txt)
+      x4_ = sprintf("--> Average monthly payments: $%.0f%s/mo %s", avg_payments_, adjusted_star(), "(excluding downpayment)")
+      x5 = sprintf("--> Total gain: $%.1fK%s (if house is sold)", gain_total/1000, adjusted_star())
+      x6 = sprintf("--> Average monthly gain: $%.0f%s/mo (if house is sold)", monthly_gain, adjusted_star())
+      x7 = sprintf("--> Otherwise, $%.0f%s/mo %s afterwards", monthly_income, adjusted_star(), income_txt)
+      txt_out = paste(txt_out, x1, x2, x3, x4, x4_, x5, x6, x7, sep = "\n")
+      txt_out = paste0(txt_out, prices_adjusted_txt)
+      
+      return(txt_out)
+    }
+    
+    output$buyhousenandliveinit_money_years <- renderText({
+      return(foRequiredMoneyByYears(showrent = T, gains = itemized_tax_gain()))
+    })
+    
+    output$buyhousenandrent_money_years <- renderText({
+      return(foRequiredMoneyByYears(showrent = F, 
+                                    income = input$house_rent, 
+                                    gains = tax_gain_rent()))
+    })
+    
+    output$buyhousenandairbnb_money_years <- renderText({
+      return(foRequiredMoneyByYears(showrent = F, 
+                                    income = input$business_house_income, 
+                                    costs=input$business_costs, 
+                                    gains = tax_gain_airbnb()))
+    })
+    
+    foCreateModalContent <- function(verbatim_id, income_txt){
+      tags$div(
+        tags$h4("How much money do you need for this option?"),
+        tags$h5(style = "font-size:15px;margin-top:0px;", 
+                sprintf("(assuming all %s goes to Mortgage payments)",income_txt)
+                ),
+        tags$div(
+          style = "overflow-y: auto; max-height:272px;", 
+          verbatimTextOutput(verbatim_id)
+        )
+      )
+    }
+    
+    foCreateModal <- function(title, verbatim_id, income_txt){
+      delay(10, showModal(modalDialog(
+        foCreateModalContent(verbatim_id = verbatim_id, income_txt = income_txt),
+        title = tags$h3(title),
+        footer = modalButton("Close"),
+        size = "m",
+        easyClose = TRUE
+      )))
+    }
+    
+    observeEvent(input$link_buyhouseandliveinit, {
+      foCreateModal(title = "Buy House and Live in it", 
+                    verbatim_id = "buyhousenandliveinit_money_years",
+                    income_txt = "gains")
+    })
+    
+    observeEvent(input$link_buyhouseandrent, {
+      foCreateModal(title = "Buy House and Rent", 
+                    verbatim_id = "buyhousenandrent_money_years",
+                    income_txt = "gains")
+    })
+    
+    observeEvent(input$link_buyhouseandairbnb, {
+      foCreateModal(title = "Buy House and AirBnB", 
+                    verbatim_id = "buyhousenandairbnb_money_years",
+                    income_txt = "gains")
     })
     
     # uioutput_keepincheckingaccount
