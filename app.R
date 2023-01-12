@@ -55,7 +55,8 @@ dropdown_options <- function(content, titletxt = "Options", tooltip = "Click to 
              icon = icon("cog"), #status = "info", 
              right = T, 
              up = F, 
-             tooltip = tooltipOptions(title = tooltip, placement = "right", html = T), 
+             # width = "300px", 
+             tooltip = tooltipOptions(title = tooltip, placement = "top", html = T), 
              tags$h4(style = "font-weight:bold; margin-bottom: 10px; white-space: nowrap;", titletxt), 
              content, 
              tags$p(style = "margin-bottom: 10px;", "")
@@ -73,7 +74,11 @@ option_set = list(
   "house_income_invest_earnings" = list(type = "checkboxInput"),
   "house_income_investment_strategy" = list(type = "selectInput"),
   "investment_gain" = list(type = "sliderInput"),
+  "income_tax_main" = list(type = "sliderInput"),
   "income_tax" = list(type = "sliderInput"),
+  "capital_gains_tax" = list(type = "sliderInput"),
+  "capital_gains_exemption" = list(type = "anumericInput"),
+  "realtor_commission_fee" = list(type = "sliderInput"),
   "inflation" = list(type = "sliderInput"),
   "housing_inflation" = list(type = "sliderInput"),
   "adjust_by_inflation" = list(type = "checkboxInput"),
@@ -89,6 +94,20 @@ option_set = list(
   "state_tax_paid" = list(type = "anumericInput"),
   "other_itemized_deductions" = list(type = "anumericInput"),
   "standard_deductions" = list(type = "anumericInput"),
+  "checkbox_useforbusiness" = list(type = "checkboxInput"),
+  "business_house_income" = list(type = "anumericInput"),
+  "business_costs" = list(type = "anumericInput"),
+  "business_costs_property_tax" = list(type = "anumericInput"),
+  "business_costs_insurance" = list(type = "anumericInput"),
+  "business_costs_hoa_fee" = list(type = "anumericInput"),
+  "business_costs_maintenance" = list(type = "anumericInput"),
+  "business_costs_utilities" = list(type = "anumericInput"),
+  "business_costs_misc" = list(type = "anumericInput"),
+  "business_income_nightly_price" = list(type = "anumericInput"),
+  "business_income_cleaning_fee" = list(type = "anumericInput"),
+  "business_income_airbnb_cut" = list(type = "anumericInput"),
+  "business_income_labor_fee_cut" = list(type = "anumericInput"),
+  "business_income_utilization_rate" = list(type = "sliderInput"),
   "checksum"="320932023409243"
 )
 
@@ -162,14 +181,14 @@ value_div <- function(value_id){
   uiOutput(value_id, style = "font-size:22px; text-align: center; width:100%; margin-top:0px;min-height:31px;")
 }
 
-scenario_box <- function(title="", img_src, label = "", value_id="", margin=0){
+scenario_box <- function(title="", img_src, label = "", value_id="", margin=0, outer_id = ""){
   wxx = 125;
   st_mrg = paste0("margin:", sprintf("%.1f", wxx*margin/200), "px;");
   wxx_t = wxx * (1 - margin/100);
   p_left=6;
   
   
-  tags$div(style = "display:inline-flex;", 
+  tags$div(style = "display:inline-flex;", id = outer_id, 
       # helper(
       tags$div(
       style = "display:inline-block; border: groove; padding:8px; border-width:1.5px; margin:4px; max-width:380px; min-height:160px;", 
@@ -200,16 +219,20 @@ foBoxLabel <- function(pre, outputid, post){
 boxLabels <- list(
   "rent" = foBoxLabel("This scenario assumes the house is purchased to be rented out, resulting in a ", "uioutput_buyhouseandrent_label", "saving."),
   "liveinit" = foBoxLabel("This scenario assumes the house is purchased to be used as a primary residence, making a ", "uioutput_buyhouseandliveinit_label", "saving by not paying rent."),
+  "airbnb" = foBoxLabel("This scenario assumes the house is purchased to be rented out on a daily basis, resulting in a ", "uioutput_buyhouseandairbnb_label", "saving."),
   "retirement" = foBoxLabel("This scenario assumes that up to", "uioutput_retirement_account_label", "of the money is put into a retirement account, providing tax-free gains on the investments.")
 )
+
+airbnb_box <- scenario_box("Buy house and AirBnB", "icon_buy_house_and_airbnb.png", margin=5, value_id = "uioutput_buyhouseandairbnb", label = boxLabels$airbnb)
 
 boxes <- list(
   scenario_box("Buy house and live in it", "icon_buy_house_and_live.png", value_id = "uioutput_buyhouseandliveinit", margin = 7, label = boxLabels$liveinit),
   scenario_box("Buy house and rent", "icon_buy_house_and_rent.png", value_id = "uioutput_buyhouseandrent", label = boxLabels$rent),
+  uiOutput("uioutput_airbnb", inline = T),
   scenario_box("Use the money for investment", "icon_investment_account.png", value_id = "uioutput_investment", margin = -15, label = "This scenario assumes the money to be used for mortgage are put into a tax-liable investment account instead of buying a house."),
   scenario_box("Retirement Account ", "icon_retirement_investment.png", value_id = "uioutput_retirement", margin = -14, label = boxLabels$retirement),
   scenario_box("Protect against inflation", "icon_protect_against_inflation.png", value_id = "uioutput_protectagainstinflation", margin = 14, label = "This scenario assumes that the value of money is retained against inflation, for example, by using TIPS or I-bonds."),
-  scenario_box("Keep in checking account", "icon_fail_grade4.png", value_id = "uioutput_keepincheckingaccount", margin = 10, label = "This scenario assumes all the money is deposited into a checking account without investment.")
+  scenario_box("Keep in checking account", "icon_fail_grade4.png", value_id = "uioutput_keepincheckingaccount", margin = 10, label = "This scenario assumes all the money is deposited into a checking account without investment.", outer_id = "scenariobox-keepincheckingaccount")
   )
 
 addchildren <- function(el, boxes){
@@ -235,6 +258,8 @@ generate_scenario_area <- function(boxes, nRow = 3){
     box = boxes[[i]]
     
     cur_row$children[[iCol]] = column(12/nRow, box);
+    # cur_row$children[[iCol]] = tags$div(class = "col", box);
+      # column(12/nRow, box);
     if(iCol == nRow){
       iCol = 0;
       outer$children[[iRow]] = cur_row
@@ -257,23 +282,26 @@ foInlineDiv <- function(...){
   )
 }
 
-anumericInput <- function(id, title, value, min, max, step=1, suffix = ""){
-  shinyWidgets::autonumericInput(
+anumericInput <- function(id, title, value, min, max, step=1, suffix = "", decimalPlaces = 0, currencySymbol = "$", min_width = 0){
+  # tags$div(
+    # style = "display:inline-block;", 
+    # style = sprintf("min-width:%dpx", min_width),
+    shinyWidgets::autonumericInput(
     inputId = id, 
     label = title, 
-    currencySymbol = "$", 
+    currencySymbol = currencySymbol, 
     align = "left", 
     value = value, 
     currencySymbolPlacement = "p",
-    decimalPlaces = 0,
+    decimalPlaces = decimalPlaces,
     digitGroupSeparator = ",",
     decimalCharacter = ".",
     minimumValue = min, 
     maximumValue = max,
     suffixText = suffix,
   )
+  # )
 }
-
 
 mortgage_inputs <- list(
   anumericInput("house_price", "House Price:", 379000, min = 0, max = 100000000, step = 100),
@@ -294,15 +322,69 @@ dropdown_content = tags$div(style = "min-width:200px;",
   # tags$p("All costs are monthly.")
 )
 
+minw_bc = 111
+business_costs_dropdown_content <- tags$div(
+  # class = "container-fluid",
+  style = "min-width: 315px;", 
+  style = "min-width: min(35vw, 315px);", 
+  # style = "width:100%;",
+  tags$p("Enter monthly costs:"),
+  generate_scenario_area(list(
+    anumericInput("business_costs_property_tax", "Property Tax:", 650, min = 0, max = 10000000, min_width = minw_bc),
+    anumericInput("business_costs_insurance", "Insurance:", 300, min = 0, max = 10000000, min_width = minw_bc),
+    anumericInput("business_costs_hoa_fee", "HOA Fee:", 300, min = 0, max = 10000000, min_width = minw_bc),
+    anumericInput("business_costs_maintenance", "Maintenance:", 100, min = 0, max = 10000000, min_width = minw_bc),
+    anumericInput("business_costs_utilities", "Utilities:", 300, min = 0, max = 10000000, min_width = minw_bc),
+    anumericInput("business_costs_misc", "Other:", 0, min = 0, max = 10000000, min_width = minw_bc)
+    
+  ), nRow = 3),
+  tags$div(style = "margin-left:auto; margin-right:auto; width:80px;", actionButton("business_costs_compute_button", "Compute")),
+)
+
+business_income_dropdown_content <- tags$div(
+  style = "min-width:255px;",
+  style = "min-width:min(35vw, 255px);",
+  # style = "min-width:40vw;",
+  # class = "some-classx", 
+  # style = "min-width:255px;",
+  # tags$p("Enter monthly costs:"),
+  generate_scenario_area(list(
+    tipify(anumericInput("business_income_nightly_price", "Nightly price:", 250, min = 0, max = 10000000, decimalPlaces = 1),
+          "Enter gross nightly price before tax"),
+    tipify(anumericInput("business_income_cleaning_fee", "Cleaning Fee:", 10, min = 0, max = 100000, decimalPlaces = 1),
+           "Enter the daily cleaning fee"), 
+    anumericInput("business_income_airbnb_cut", "AirBnB Cut:", 15, min = 0, max = 100, suffix = "%", currencySymbol = "", decimalPlaces = 1),
+    anumericInput("business_income_labor_fee_cut", "Labor Cut:", 0, min = 0, max = 100, suffix = "%", currencySymbol = "", decimalPlaces = 1)
+    # anumericInput("business_income_utilities", "Utilities:", 300, min = 0, max = 10000000),
+    # anumericInput("business_income_misc", "Other:", 0, min = 0, max = 10000000)
+  ), nRow = 2),
+  sliderInput("business_income_utilization_rate", "Expected Room Utilization Rate:", 
+              min = 0, max = 100, step  = 1, 
+              value = 50, post = "%"),
+  # anumericInput("business_income_utilization_rate", "Expected Room Utilization Rate:", 50, min = 0, max = 100, suffix = "%", currencySymbol = "", decimalPlaces = 1),
+  tags$div(style = "margin-left:auto; margin-right:auto; width:80px;", actionButton("business_income_compute_button", "Compute")),
+)
+
 house_income_inputs <- list(
   anumericInput("house_rent", "Monthly Rent:", 2300, min = 0, max = 100000, step = 10),
   tags$div(style = "display:flex;",
            anumericInput("house_costs", "Monthly Costs:", 1200, min = 0, max = 100000, step = 10),
            dropdown_options(dropdown_content, title = "Compute House Costs", tooltip = "Click to compute monthly house costs")),
+  
   tags$div(
     style = "vertical-align: top; font-size: 14px;",
     checkboxInput("house_income_invest_earnings", "Invest the earnings", value = T, width = NULL)),
   selectInput("house_income_investment_strategy", "Investment Strategy:", c("Retirement Investment", "Tax-liable Investment", "Protect against inflation"), selected = "Retirement Investment")
+)
+
+useforbusiness_inputs <- list(
+  tags$div(style = "display:flex;",
+           tipify(anumericInput("business_house_income", "Monthly Income:", 3080, min = 0, max = 100000),
+                  "Enter the expected gross <br> monthly income here"),
+           dropdown_options(business_income_dropdown_content, title = "Compute AirBnb Income", tooltip = "Click to compute gross monthly income for AirBnB")),
+  tags$div(style = "display:flex;",
+           anumericInput("business_costs", "Monthly Costs:", 1650, min = 0, max = 100000),
+           dropdown_options(business_costs_dropdown_content, title = "Compute Business Costs", tooltip = "Click to compute monthly business costs"))
 )
 
 retirement_limits <- list(
@@ -321,6 +403,16 @@ ui <- fluidPage(
       tags$script(on_ready),
       tags$link(rel="shortcut icon", href="favicon.png")
     ),
+    
+    tags$style(HTML(
+      "
+    .dropdown-menu-right {
+        left: auto;
+        right: -15vw;
+        right: min(-15vw, 200px);
+    }
+      "
+    )),
     
     # Application title
     tags$div(style = "margin-top:50px;"), 
@@ -367,6 +459,12 @@ ui <- fluidPage(
           ),
           optionBox(id = "house_income_optionbox", title = "House Income", status = "danger", collapsed = F, class = "requiredinputbox",
             generate_scenario_area(house_income_inputs, nRow=2),
+            optionBox(id = "house_useforbusiness_optionbox", title = "Use for AirBnB", 
+              tipify(checkboxInput("checkbox_useforbusiness", "Use house for AirBnB", value = F),
+                     "Controls whether the AirBnB scenario is displayed in the results"),
+              generate_scenario_area(useforbusiness_inputs, nRow=1),
+            )
+            
             # checkboxInput("house_income_invest_earnings", "Invest the earnings", value = T, width = NULL),
             # selectInput("house_income_investment_strategy", "Investment Strategy:", c("Retirement Investment", "Tax-liable Investment", "Protect against inflation"), selected = "Tax-liable Investment")
             # numericInput("house_yearly_income", "House Yearly Net Income ($):", 4700, min = 0, max = 100000, step = 10),
@@ -392,7 +490,7 @@ ui <- fluidPage(
                       min = 0, max = 10, step  = 0.1, 
                       value = 5, post = "%"),
           optionBox(id = "tax_itemized_deductions", title = "Itemized Deductions", status = "primary",
-            tipify(checkboxInput("claim_itemized_deductions", "File Itemized Deductions", value = T, width = NULL),
+            tipify(checkboxInput("claim_itemized_deductions", "File Itemized Deductions (Schedule A)", value = T, width = NULL),
                   "Claims mortgage interest and property tax deductions if applicable"),
             tipify(anumericInput("property_tax_yearly", "Property Tax Yearly", 7800, min = 0, max = 10000000),
                   "Enter the property tax of <br> the purchased house"     
@@ -424,12 +522,13 @@ ui <- fluidPage(
                         min = 0, max = 10, step  = 0.01, 
                         value = 2.77, post = "%"),
           ),
-          # tipify(
+          
           tags$div(id = "account_for_inflation_div", 
-            checkboxInput("adjust_by_inflation", "Adjust numbers by inflation", value = T, width = NULL),
+            # tipify(
+              checkboxInput("adjust_by_inflation", "Adjust numbers by inflation", value = T),
+              # "Check this mark to adjust the output values to reflect today's prices"
+            # ),
           ),
-          #   "Check this mark to adjust the output values to reflect today's prices"
-          # ),
           optionBox(id = "config_optionbox", title = "Import/Export Config", status = "success", 
             textInput("config_name", "Configuration name (optional):", value = ""),
             tags$div(
@@ -446,9 +545,18 @@ ui <- fluidPage(
             textInput("config_token", "Enter token:", value = ""),
             tags$div(
               tags$div(style = "display: inline-block; float:right;",
-                actionButton("restore_token_button", "Restore config")
+                tipify(actionButton("restore_token_button", "Restore config"),
+                       "Restores the configuration from the input token")
               )
-            )
+            ),
+            tags$br(),
+            tags$div(
+              tipify(
+              fileInput("upload_config", "Upload Config:", accept = c(".json")),
+              "Restores the configuration from the uploaded config file"),
+              tags$style(".shiny-input-container {margin-bottom: 0px} #file1_progress { margin-bottom: 3px }"),
+              # tags$style(".checkbox {margin-bottom: 0px;}"),
+            ),
           )
           )),
         ),
@@ -733,7 +841,7 @@ server <- function(input, output, session) {
       }
     })
     
-    fo_house_income <- function(tax_rent = input$income_tax_main, isprimaryresidence = F){
+    fo_house_income <- function(tax_rent = input$income_tax_main, isprimaryresidence = F, airbnb = F){
       if(input$house_income_invest_earnings){
         switch(input$house_income_investment_strategy,
                "Retirement Investment" = {
@@ -759,15 +867,27 @@ server <- function(input, output, session) {
       }
       # monthly_income = input$house_yearly_income/12
       monthly_income = input$house_rent * (1 - tax_rent/100) - input$house_costs
+      if(airbnb == TRUE){
+        monthly_income = input$business_house_income * (1 - tax_rent/100) - input$business_costs
+      }
       
       if(isprimaryresidence){
         house_val <- scenarioD_housevalue_liveinit()
       } else {
         house_val <- scenarioD_housevalue_rent()
       }
+      
+      
       extra_monthly_input = c()
-      if(input$claim_itemized_deductions){
-        extra_monthly_input = itemized_tax_gain()$monthly_inputs
+      if(isprimaryresidence){
+        if(input$claim_itemized_deductions){
+          extra_monthly_input = itemized_tax_gain()$monthly_inputs
+        }
+      } else {
+        extra_monthly_input = tax_gain_rent()$monthly_inputs
+        if(airbnb == TRUE){
+          extra_monthly_input = tax_gain_airbnb()$monthly_inputs
+        }
       }
       
       x = foSimulator(
@@ -796,12 +916,20 @@ server <- function(input, output, session) {
       fo_house_income(tax_rent = 0, isprimaryresidence = T)
     })
     
+    scenarioE_houseairbnb_list <- reactive({
+      fo_house_income(isprimaryresidence = F, airbnb = T)
+    })
+    
     scenarioE_houserent <- reactive({
       scenarioE_houserent_list()$total
     })
     
     scenarioE_houseliveinit <- reactive({
       scenarioE_houseliveinit_list()$total
+    })
+    
+    scenarioE_houseairbnb <- reactive({
+      scenarioE_houseairbnb_list()$total
     })
     
     # retirement_with_max_limit <- reactive({
@@ -921,12 +1049,16 @@ server <- function(input, output, session) {
     
     foRestoreConfig <- function(inputlist){
       out = list()
+      stop_at_the_end = c()
       for(iX in 1:(length(option_set) - 1)){
         name = names(option_set[iX])
         type = option_set[iX][[name]]$type
         value = inputlist[[name]]
-        if(is.na(value)){
-          stop(paste0("Input option value not found: ", name))
+        if(is.null(value) || is.na(value)){
+          if(length(stop_at_the_end) == 0){
+            stop_at_the_end = name;
+          }
+          next;
         }
         switch(type,
           "numericInput" = {updateNumericInput(session, name, value = value)},
@@ -937,6 +1069,9 @@ server <- function(input, output, session) {
           stop(paste0("Invalid option type: ", type))
         )
       }
+      if(length(stop_at_the_end)>0){
+        stop(paste0("Input option value not found: ", stop_at_the_end))
+      }
     }
     
     reactive_inputset <- reactive({
@@ -946,7 +1081,7 @@ server <- function(input, output, session) {
     foGenerateToken <- function(){
       set = reactive_inputset()
       xs = toJSON(set, indent=0, method="C" )
-      token = convertRaw2Str(memCompress(xs, "g")) 
+      token = convertRaw2Str(memCompress(xs, "bzip2")) 
     }
     
     observeEvent(input$config_token,
@@ -970,10 +1105,25 @@ server <- function(input, output, session) {
       show_alert(title = alert_txt, showCloseButton = F, type = "success", btn_labels = NA, timer = 1000, showConfirmButton = F)
     })
     
-    foRestoreConfiguration <- function(token){
+    observeEvent(input$upload_config, {
+      foRestoreConfiguration("", fromtoken = F, file = input$upload_config)
+    })
+    
+    foRestoreConfiguration <- function(token, fromtoken = T, file = NULL){
       tryCatch({
-        xd = memDecompress(convertStr2Raw(token), "g", asChar = T)
-        xx = fromJSON(xd)
+        if(fromtoken){
+          xd = memDecompress(convertStr2Raw(token), "bzip2", asChar = T)
+          xx = fromJSON(xd)
+        } else {
+          if(is.null(file)){
+            stop("File is null")
+          }
+          ext = tools::file_ext(file$datapath)
+          if(is.null(ext) || ext != "json"){
+            stop("File extension error")
+          }
+          xx = fromJSON(file = file$datapath)
+        }
         foRestoreConfig(xx)
         name = xx[["config_name"]] 
         if(!is.null(name)){
@@ -1056,6 +1206,15 @@ server <- function(input, output, session) {
       )
     })
     
+    output$uioutput_buyhouseandairbnb <- renderUI({
+      value = scenarioE_houseairbnb() - scenarioD_housenogain()
+      tipify(
+        tags$span(paste0(sprintf("%.1fK", scenarioE_houseairbnb()*1e-3), adjusted_star())),
+        tooltip_buyhouseandairbnb()
+        # paste0(sprintf("Equivalent to: <br> The house + %.1fK", value*1e-3), adjusted_star())
+      )
+    })
+    
     foHouseInvestmentTooltip <- function(val, scenario_output_list){
       if(investment_strategy_text() != "retirement"){
         v4 <- sprintf("+ %.1fK%s in %s", val*1e-3, adjusted_star(), investment_strategy_text())
@@ -1092,6 +1251,17 @@ server <- function(input, output, session) {
       return(paste(v1, v2, v3, v3_, v4, sep ="<br>"))
     })
     
+    tooltip_buyhouseandairbnb <- reactive({
+      val = scenarioE_houseairbnb() - scenarioD_housevalue_rent()
+      v1 <- paste0(sprintf("House value: %.1fK", scenarioD_housenogain()*1e-3), adjusted_star())
+      v2 <- paste0(sprintf("House resell value: %.1fK", scenarioD_housevalue_rent()*1e-3), adjusted_star())
+      v3 <- sprintf("(after %s%% realtor commission", input$realtor_commission_fee)
+      v3_ <- sprintf("and %s%% capital gains tax)", input$capital_gains_tax)
+      v4 <- foHouseInvestmentTooltip(val, scenarioE_houseairbnb_list())
+      # v4 <- sprintf("+ %.1fK%s in %s", val*1e-3, adjusted_star(), investment_strategy_text())
+      return(paste(v1, v2, v3, v3_, v4, sep ="<br>"))
+    })
+    
     itemizedTaxAdvantage <- function(){
       avg_gain = itemized_tax_gain()$avg_gain / 12
       if(itemized_tax_gain()$enabled && avg_gain >= 1){
@@ -1110,15 +1280,24 @@ server <- function(input, output, session) {
     })
     
     output$uioutput_buyhouseandrent_label <- renderUI({
-      rent_after_tax = input$house_rent*(1-input$income_tax_main/100);
+      rent_after_tax = round(input$house_rent*(1-input$income_tax_main/100) + tax_gain_rent()$avg_gain/12);
       # tags$span(
         # paste0("This scenario assumes the house is purchased to be rented out, resulting in a "),
-        tipify(tags$span(paste0("$", rent_after_tax - input$house_costs + tax_advantage(), "*/mo")),
-               paste0(paste0("$", rent_after_tax, " rent (after ", input$income_tax_main, "% tax)", "<br> - $", input$house_costs, " costs"), 
-                      itemizedTaxAdvantage(), "<br>", "*Scales with housing inflation"),
+        tipify(tags$span(paste0("$", rent_after_tax - input$house_costs, "*/mo")),
+               paste0(paste0("$", rent_after_tax, " rent (after income tax)", "<br> - $", input$house_costs, " costs"), 
+                      "<br>", "*Scales with housing inflation"),
+               # paste0(paste0("$", rent_after_tax, " rent (after ", input$income_tax_main, "% tax)", "<br> - $", input$house_costs, " costs"), 
                )
         # "saving.  "
       # )
+    })
+    
+    output$uioutput_buyhouseandairbnb_label <- renderUI({
+      rent_after_tax = round(input$business_house_income*(1-input$income_tax_main/100) + tax_gain_airbnb()$avg_gain/12);
+      tipify(tags$span(paste0("$", rent_after_tax - input$business_costs, "*/mo")),
+             paste0(paste0("$", rent_after_tax, " income (after tax)", "<br> - $", input$business_costs, " costs"), 
+                    "<br>", "*Scales with housing inflation"),
+      )
     })
     
     output$uioutput_buyhouseandliveinit_label <- renderUI({
@@ -1212,6 +1391,14 @@ server <- function(input, output, session) {
         return("")
     })
     
+    output$uioutput_airbnb <- renderUI({
+      if(input$checkbox_useforbusiness){
+        airbnb_box
+      } else {
+        tags$div()
+      }
+    })
+    
     observe({
       if(input$house_income_invest_earnings){
         shinyjs::enable("house_income_investment_strategy")
@@ -1224,7 +1411,32 @@ server <- function(input, output, session) {
       value = input$house_costs_property_tax + input$house_costs_insurance + 
               input$house_costs_hoa_fee + input$house_costs_maintenance;
       updateAutonumericInput(session, "house_costs", value = value)
+      updateAutonumericInput(session, "business_costs_property_tax", value = input$house_costs_property_tax)
+      updateAutonumericInput(session, "business_costs_hoa_fee", value = input$house_costs_hoa_fee)
       updateAutonumericInput(session, "property_tax_yearly", value = input$house_costs_property_tax*12)
+    })
+    
+    observeEvent(input$business_costs_compute_button, {
+      value = input$business_costs_property_tax + input$business_costs_insurance + 
+        input$business_costs_hoa_fee + input$business_costs_maintenance + 
+        input$business_costs_utilities + input$business_costs_misc;
+      updateAutonumericInput(session, "business_costs", value = value)
+      updateAutonumericInput(session, "house_costs_property_tax", value = input$business_costs_property_tax)
+      updateAutonumericInput(session, "house_costs_hoa_fee", value = input$business_costs_hoa_fee)
+      updateAutonumericInput(session, "property_tax_yearly", value = input$business_costs_property_tax*12)
+    })
+    
+    observeEvent(input$business_income_compute_button, {
+      nighly_price_after_cut = (input$business_income_nightly_price *
+                              (1-input$business_income_airbnb_cut/100));
+      daily_income = (nighly_price_after_cut - input$business_income_cleaning_fee) *
+                (1- input$business_income_labor_fee_cut/100) *
+                input$business_income_utilization_rate/100
+      value = daily_income * 365 / 12
+      if(value < 0){
+        value = 0
+      }
+      updateAutonumericInput(session, "business_house_income", value = value)
     })
     
     foComputeMonthlyPayment_ <- function(loan_amount, monthly_interest, numMonths){
@@ -1314,7 +1526,79 @@ server <- function(input, output, session) {
       return(value)
     })
     
-    itemized_tax_gain <- reactive({
+    foMortgageYearlyInterest <- function(loan, interest_rate, monthly_payment){
+      total = loan
+      interest_total = 0
+      for (iMonth in (1:12)){
+        interest = total * interest_rate;
+        total = total + interest - monthly_payment
+        interest_total = interest_total + interest
+        if(total < 0){
+          total = 0
+        }
+      }
+      mortgage_interest = interest_total
+      return(list(mortgage_interest = mortgage_interest,
+                  remaining_loan = total))
+    }
+    
+    foTaxGainRent <- function(monthly_costs){
+      inflation = 1+input$inflation/100
+      housing_inflation = 1+input$housing_inflation/100
+      
+      inflation_factor = 1
+      inflation_factor_housing = 1
+      nYear = mortgage_duration()
+      total_gain = 0
+      total_gain_mortgage = 0
+      
+      monthly_payment = input$monthly_fee
+      interest_rate = effectiveMonthlyInterestRate()
+      if(interest_rate < 0){
+        interest_rate = 0
+      }
+      remaining_loan = input$house_price - input$mortgage_downpayment
+      monthly_inputs = vector('numeric', nYear * 12)
+      for(iYear in 1:nYear){
+        out = foMortgageYearlyInterest(remaining_loan, interest_rate, monthly_payment)
+        mortgage_interest = out$mortgage_interest
+        remaining_loan = out$remaining_loan
+        # message("Mortgage interest: ", mortgage_interest)
+        
+        yearly_tax_deductable = mortgage_interest
+        monthly_inflation = inflation_factor_housing
+        for (iMonth in (1:12)){
+          yearly_tax_deductable = yearly_tax_deductable + monthly_costs * monthly_inflation
+          monthly_inflation = monthly_inflation * housing_inflation^(1/12)
+        }
+        yearly_tax_gain = yearly_tax_deductable * input$income_tax_main/100
+        yearly_tax_gain_adjusted = yearly_tax_gain / inflation_factor_housing
+        total_gain = total_gain + yearly_tax_gain_adjusted
+        total_gain_mortgage = total_gain_mortgage + mortgage_interest * (input$income_tax_main/100) / inflation_factor_housing
+        
+        inflation_factor = inflation_factor * inflation
+        inflation_factor_housing = inflation_factor_housing * housing_inflation
+        monthly_inputs[(iYear-1)*12+12] = yearly_tax_gain
+      }
+      avg_gain = total_gain / nYear
+      avg_mortgage_gain = total_gain_mortgage / nYear
+      return(list(avg_gain = avg_gain, 
+                  avg_mortgage_gain = avg_mortgage_gain,
+                  enabled = TRUE, 
+                  monthly_inputs = monthly_inputs))
+    }
+    
+    tax_gain_rent <- reactive({
+      out <- foTaxGainRent(monthly_costs = input$house_costs)
+      message(sprintf("Avg Mortgage Gain Monthly: $%.1f", out$avg_mortgage_gain/12))
+      return(out)
+    })
+    
+    tax_gain_airbnb <- reactive({
+      foTaxGainRent(monthly_costs = input$business_costs)
+    })
+    
+    itemized_tax_gain <- reactive({ ## Schedule A - For buy house and live in it
       property_tax = input$property_tax_yearly
       state_tax_paid = input$state_tax_paid
       state_tax_max_deduction = input$state_tax_max_deduction
@@ -1331,19 +1615,12 @@ server <- function(input, output, session) {
       
       monthly_payment = input$monthly_fee
       interest_rate = effectiveMonthlyInterestRate()
-      total = input$house_price - input$mortgage_downpayment
+      remaining_loan = input$house_price - input$mortgage_downpayment
       monthly_inputs = vector('numeric', nYear * 12)
       for(iYear in 1:nYear){
-        interest_total = 0
-        for (iMonth in (1:12)){
-          interest = total * interest_rate;
-          total = total + interest - monthly_payment
-          interest_total = interest_total + interest
-          if(total < 0){
-            total = 0
-          }
-        }
-        mortgage_interest = interest_total
+        out = foMortgageYearlyInterest(remaining_loan, interest_rate, monthly_payment)
+        mortgage_interest = out$mortgage_interest
+        remaining_loan = out$remaining_loan
         
         state_tax_paid_ = state_tax_paid * inflation_factor
         property_tax_ = property_tax * inflation_factor_housing
@@ -1375,6 +1652,14 @@ server <- function(input, output, session) {
     observe({
       avg_gain = itemized_tax_gain()$avg_gain
       updateAutonumericInput(session, "average_taxes_saved_itemized", value = avg_gain)
+    })
+    
+    observeEvent(input$checkbox_useforbusiness, {
+      if(input$checkbox_useforbusiness){
+        shinyjs::hide("scenariobox-keepincheckingaccount")
+      } else {
+        shinyjs::show("scenariobox-keepincheckingaccount")
+      }
     })
     
     # uioutput_keepincheckingaccount
