@@ -13,6 +13,21 @@ library(clipr)
 library(shinyhelper)
 library(shinyBS) 
 
+
+tryCatch({
+  library(rjson)
+  email_credentials = fromJSON(file = "email/credentials.json")
+  options(EMAIL_AVAILABLE = TRUE)
+}, 
+error = function(e){options(EMAIL_AVAILABLE = FALSE)},
+warning = function(e){}
+)
+
+EMAIL_AVAILABLE = getOption("EMAIL_AVAILABLE")
+if(is.null(EMAIL_AVAILABLE)){
+  EMAIL_AVAILABLE = FALSE
+}
+
 on_ready <- paste(
   "$(function() {",
   "$(document).on('shiny:connected', function(e) {",
@@ -161,6 +176,10 @@ guide <- Cicerone$
        "Configuration",
        "Here, you can save the selected options for future use or generate a link to share them with others."
   )$
+  step("contact_optionbox_wrapper", 
+       "Contact",
+       "You can use this section to report a problem, or to make comments or suggestions on what you would like to see in future updates."
+  )$
   step("main_output_div", 
        "Analysis Results",
        "Here, you can view the analysis results. For the money necessary to pay for the mortgage, several competing scenarios are considered to assess the opportunity cost: Retirement (tax-free) investment, tax-liable investment, inflation protection and so on."
@@ -240,10 +259,10 @@ boxes <- list(
   scenario_box(house_link, "icon_buy_house_and_live.png", value_id = "uioutput_buyhouseandliveinit", margin = 7, label = boxLabels$liveinit),
   scenario_box(houserent_link, "icon_buy_house_and_rent.png", value_id = "uioutput_buyhouseandrent", label = boxLabels$rent),
   uiOutput("uioutput_airbnb", inline = T),
-  scenario_box("Use the money for investment", "icon_investment_account.png", value_id = "uioutput_investment", margin = -15, label = "This scenario assumes the money to be used for mortgage are put into a tax-liable investment account instead of buying a house."),
-  scenario_box("Retirement Account ", "icon_retirement_investment.png", value_id = "uioutput_retirement", margin = -14, label = boxLabels$retirement),
-  scenario_box("Protect against inflation", "icon_protect_against_inflation.png", value_id = "uioutput_protectagainstinflation", margin = 14, label = "This scenario assumes that the value of money is retained against inflation, for example, by using TIPS or I-bonds."),
-  scenario_box("Keep in checking account", "icon_fail_grade4.png", value_id = "uioutput_keepincheckingaccount", margin = 10, label = "This scenario assumes all the money is deposited into a checking account without investment.", outer_id = "scenariobox-keepincheckingaccount")
+  scenario_box(tipify(tags$span("Use the money for investment"), "Mainly the stock market. <br> Check investment tab for details"), "icon_investment_account.png", value_id = "uioutput_investment", margin = -15, label = "This scenario assumes the money to be used for mortgage are put into a tax-liable investment account instead of buying a house."),
+  scenario_box(tipify(tags$span("Retirement Account"), "Mainly 401(k) and Roth IRA Check investment tab for details."), "icon_retirement_investment.png", value_id = "uioutput_retirement", margin = -14, label = boxLabels$retirement),
+  scenario_box(tipify(tags$span("Protect against inflation"), "Assumes money retains its value <br> No gain, no loss."), "icon_protect_against_inflation.png", value_id = "uioutput_protectagainstinflation", margin = 14, label = "This scenario assumes that the value of money is retained against inflation, for example, by using TIPS or I-bonds."),
+  scenario_box(tipify(tags$span("Keep in checking account"), "Assumes money is kept as cash <br> Not a good idea really."), "icon_fail_grade4.png", value_id = "uioutput_keepincheckingaccount", margin = 10, label = "This scenario assumes all the money is deposited into a checking account without investment.", outer_id = "scenariobox-keepincheckingaccount")
   )
 
 addchildren <- function(el, boxes){
@@ -293,7 +312,7 @@ foInlineDiv <- function(...){
   )
 }
 
-anumericInput <- function(id, title, value, min, max, step=1, suffix = "", decimalPlaces = 0, currencySymbol = "$", min_width = 0){
+anumericInput <- function(id, title, value, min, max, step=1, suffix = "", decimalPlaces = 0, currencySymbol = "$", min_width = 0, emptyInputBehavior = "min"){
   # tags$div(
     # style = "display:inline-block;", 
     # style = sprintf("min-width:%dpx", min_width),
@@ -310,6 +329,7 @@ anumericInput <- function(id, title, value, min, max, step=1, suffix = "", decim
     minimumValue = min, 
     maximumValue = max,
     suffixText = suffix,
+    emptyInputBehavior = emptyInputBehavior,
   )
   # )
 }
@@ -403,9 +423,34 @@ retirement_limits <- list(
   anumericInput("retirement_roth_ira_max_contribution", "Contribution limit Roth IRA", 6500, min = 0, max = 1000000)
 )
 
+foList <- function(...){
+  x <- list(...)
+  outList <- list()
+  previous = NULL
+  for(i in seq(1, length(x), 1)){
+    if((i %% 2) == 0){
+      outList[[previous]] <- x[[i]]
+    }
+    previous = x[[i]]
+  }
+  return(outList)
+}
+
+# application_title = "Mortgage ROI Calculator"
+app_title = "Mortgage Calculator"
+application_title = "Mortgage Calculator"
+subtitle = "Making informed decisions about your financial future"
+# subtitle = "Opportunity cost of getting a mortgage compared to other investment options"
+subtitle_div <- tags$text(style = "font-size:19px; font-weight:normal; color: #777;", subtitle)
+app_title_div <- tags$div(
+  style = "margin-bottom:10px;", 
+  tags$h1(style = "font-size:31px; font-weight:bold; color: #555; margin-bottom:0px;", paste0(application_title, "")),
+  subtitle_div
+)
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
+    title = app_title,
     useToastr(),
     useShinyjs(),
     shinyjs:::extendShinyjs(text = jscode, functions = c("collapse")),
@@ -427,8 +472,9 @@ ui <- fluidPage(
     
     # Application title
     tags$div(style = "margin-top:50px;"), 
-    titlePanel("Mortgage Calculator"),
-    tags$h4(style = "font-size:16px; color: #666666; margin-bottom:12px;", "Opportunity cost of getting a mortgage compared to other investment options"), 
+    app_title_div, 
+    # titlePanel("Mortgage Calculator"),
+    # tags$h4(style = "font-size:16px; color: #666666; margin-bottom:12px;", "Opportunity cost of getting a mortgage compared to other investment options"), 
     tags$head(
       tags$meta(name = "description", content = "A simple calculator to assess the opportunity cost of getting a mortgage taking into account the expected inflation and other investment options.")
     ),
@@ -568,6 +614,22 @@ ui <- fluidPage(
               tags$style(".shiny-input-container {margin-bottom: 0px} #file1_progress { margin-bottom: 3px }"),
               # tags$style(".checkbox {margin-bottom: 0px;}"),
             ),
+          ),
+          optionBox(id = "contact_optionbox", title = "Contact", status = "success",
+            generate_scenario_area(nRow = 2, list(
+            textInput("textinput_name", "Name", value = "", placeholder = "(Optional)"),
+            textInput("textinput_email", "Email", value = "", placeholder = "(Optional)")
+                    )), 
+            tags$div(style = "margin-top:5px; margin-bottom:5px;",
+                     generate_scenario_area(nRow = 2, list(
+            textInput("textinput_org", "Organization", value = "", placeholder = "(Optional)"),
+            selectInput("message_type", "Category",
+                        choices = foList("Report an Error", 1, "Comment", 2, "Suggestion", 3),
+                        selected = 1, selectize = F)
+                     ))
+            ),
+            textAreaInput("textinput_message", "Message", height = 80, value = ""),
+            actionButton("buttonLeaveFeedback", "Submit", style = "margin-top: 6px;")
           )
           )),
         ),
@@ -579,16 +641,20 @@ ui <- fluidPage(
             style = "max-width:800px;", 
             tags$h3("Hello World!", style = "margin-top:4px;"),
             tags$p(style = "font-size: 16px; text-align:justify; margin-bottom:0px;", 
-                   "This is your Mortgage Calculator speaking! If you look outside, you can see the mortgages smiling with only around 5.21% yearly interest...",
+                   "This is your Mortgage Calculator speaking! If you look outside, you can see the mortgages smiling with only around ", 
+                   tipify(tags$span("5.21% yearly interest..."), "This part is a joke, don\\'t take it seriously. Mortgages don\\'t smile."),
+                   # "This is your Mortgage Calculator speaking! If you look outside, you can see the mortgages smiling with only around 5.21% yearly interest...",
                    # tags$br(), 
-                   "Enough chitchat. Let's talk business.",
+                   # "Enough chitchat. Let's talk business."
+                   "Enough chitchat. Now, let's assess if getting a mortgage is truly profitable...",
                    # ,tags$p(style = "font-size: 16px; margin-bottom:0px;", "Enough chitchat. Let's talk business."),
                    # "In this tool, you can assess the opportunity cost of getting a mortgage, taking the expected inflation and other investment options into account."
                    # "This is your Mortgage Calculator speaking! Here, you can assess the opportunity cost of getting a mortgage, taking the expected inflation and other investment options into account."
                    # "Welcome to the Opportunity Cost Calculator for Home Buying and Investment! This tool allows you to compare the potential financial outcomes of purchasing a home and living in it, purchasing a home and renting it out, investing in a retirement account, or investing in other financial instruments. By inputting your financial information and desired investment strategy, you can make informed decisions about how to best use your money to achieve your long-term financial goals."
                    ), 
-            tags$p(style = "font-size: 16px; text-align:justify; margin-top:0px;",
-                   "In this tool, you can assess the opportunity cost of getting a mortgage, taking the expected inflation and other investment options into account. Each box below shows the outcome of an alternative scenario using the money to pay off the mortgage for a different investment."
+            tags$p(style = "font-size: 16px; text-align:justify; margin-top:6px;",
+                   "In this tool, you can assess the opportunity cost of getting a mortgage, taking into account the expected inflation and other investment options, such as the stock market. Each box below shows the outcome of an alternative scenario using the money to pay off the mortgage for a different investment."
+                   # "In this tool, you can assess the opportunity cost of getting a mortgage, taking the expected inflation and other investment options into account. Each box below shows the outcome of an alternative scenario using the money to pay off the mortgage for a different investment."
             ),
             tags$div(
               id = "about_main_div", style = "font-size:17px; margin-bottom:10px;",
@@ -614,6 +680,8 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
+  
+  source("send_email.R", local = TRUE)
   
   observe_helpers(withMathJax = TRUE, help_dir = "helpfiles")
   
@@ -1176,18 +1244,20 @@ server <- function(input, output, session) {
           foUncollapseBoxIfNeeeded("tax_optionbox")
           foUncollapseBoxIfNeeeded("inflation_optionbox")
           foUncollapseBoxIfNeeeded("config_optionbox")
+          foUncollapseBoxIfNeeeded("contact_optionbox")
           # val = input[["mortgage_optionbox_collapse"]]
           # if(!is.null(val)){
           #   js$collapse("mortgage_optionbox")
           # }
         }
-        if(b == "config_optionbox_wrapper"){
+        if(b == "contact_optionbox_wrapper"){
           foUncollapseBoxIfNeeeded("mortgage_optionbox", collapse = T)
           foUncollapseBoxIfNeeeded("house_income_optionbox", collapse = T)
           foUncollapseBoxIfNeeeded("investment_optionbox", collapse = T)
           foUncollapseBoxIfNeeeded("tax_optionbox", collapse = T)
           foUncollapseBoxIfNeeeded("inflation_optionbox", collapse = T)
           foUncollapseBoxIfNeeeded("config_optionbox", collapse = T)
+          foUncollapseBoxIfNeeeded("contact_optionbox", collapse = T)
         }
       }
     })
@@ -1389,10 +1459,10 @@ server <- function(input, output, session) {
     # })
     
     output$uioutput_afterxyears_label <- renderUI({
-      tags$b(
+      tipify(tags$b(
         id = "afterxyears_label", 
         sprintf("With %.1fK initial capital and $%.0f monthly payments, after %d years:", input$mortgage_downpayment*1e-3, input$monthly_fee, mortgage_duration()),
-      )
+      ), "This is the money you need to have available to execute the scenarios below.")
     })
     
     output$uioutput_inflation_adjusted_label <- renderUI({
@@ -1525,7 +1595,7 @@ server <- function(input, output, session) {
     }
     
     effectiveMonthlyInterestRate <- reactive({
-      loan = input$house_price - input$mortgage_downpayment
+      loan = pmax(input$house_price - input$mortgage_downpayment, 0)
       minX = -0.1/12
       maxX = 0.1/12
       numMonth = mortgage_duration() * 12
@@ -1568,7 +1638,7 @@ server <- function(input, output, session) {
       if(interest_rate < 0){
         interest_rate = 0
       }
-      remaining_loan = input$house_price - input$mortgage_downpayment
+      remaining_loan = pmax(input$house_price - input$mortgage_downpayment, 0)
       monthly_inputs = vector('numeric', nYear * 12)
       for(iYear in 1:nYear){
         out = foMortgageYearlyInterest(remaining_loan, interest_rate, monthly_payment)
@@ -1626,7 +1696,7 @@ server <- function(input, output, session) {
       
       monthly_payment = input$monthly_fee
       interest_rate = effectiveMonthlyInterestRate()
-      remaining_loan = input$house_price - input$mortgage_downpayment
+      remaining_loan = pmax(input$house_price - input$mortgage_downpayment, 0)
       monthly_inputs = vector('numeric', nYear * 12)
       for(iYear in 1:nYear){
         out = foMortgageYearlyInterest(remaining_loan, interest_rate, monthly_payment)
@@ -1678,7 +1748,7 @@ server <- function(input, output, session) {
       inflation_factor = 1 
       inflation_factor_housing = 1
       initial = input$mortgage_downpayment
-      txt_out <- sprintf("Initial Capital: $%.0f\n", initial)
+      txt_out <- sprintf("Required Initial Capital: $%.0f\n", initial)
       adjust_by_inflation = input$adjust_by_inflation
       
       total_payments = initial
@@ -1705,19 +1775,24 @@ server <- function(input, output, session) {
         rent = input$house_rent * inflation_factor_housing
         costs_ = costs * inflation_factor_housing
         mortgage = input$monthly_fee
-        tax_return_txt = "(with tax returns)"
+        tax_return_txt = "(after tax returns)"
         if(gain == 0){
           tax_return_txt = ""
         }
+        if(showrent){
+          required_txt = " required"
+        } else {
+          required_txt = ""
+        }
         
-        x1 = sprintf("At %s year:", year_txt)
+        x1 = sprintf("At %s year%s:", year_txt, required_txt)
         if(showrent){
           additional = mortgage + costs_ - rent - gain
-          x2 = sprintf("--> $%.0f/mo rent money + $%.0f/mo additional %s", round(rent, -1), additional, tax_return_txt)
+          x2 = sprintf("--> $%.0f/mo savings from rent + $%.0f/mo additional %s", round(rent, -1), additional, tax_return_txt)
         } else {
           income_ = (income * inflation_factor_housing) * (1 - input$income_tax_main/100)
           additional = mortgage + costs_ - income_ - gain
-          x2 = sprintf("--> $%.0f/mo payments %s", additional, tax_return_txt)
+          x2 = sprintf("--> $%.0f/mo payments required %s", additional, tax_return_txt)
         }
         txt_out = paste(txt_out, x1, x2, sep = "\n")
         
@@ -1771,7 +1846,7 @@ server <- function(input, output, session) {
       x1 = sprintf("At %dth year:", mortgage_duration() + 1)
       x2 = "--> Mortgage fully paid off"
       x3 = sprintf("--> House resell value: $%.1fK%s", house_resell_val/1000, adjusted_star())
-      x4 = sprintf("--> Total payments made: $%.1fK%s %s", total_payments_/1000, adjusted_star(), rentmoney_txt)
+      x4 = sprintf("--> Total payents made: $%.1fK%s %s", total_payments_/1000, adjusted_star(), rentmoney_txt)
       x4_ = sprintf("--> Average monthly payments: $%.0f%s/mo %s", avg_payments_, adjusted_star(), "(excluding downpayment)")
       x5 = sprintf("--> Total gain: $%.1fK%s (if house is sold)", gain_total/1000, adjusted_star())
       x6 = sprintf("--> Average monthly gain: $%.0f%s/mo (if house is sold)", monthly_gain, adjusted_star())
@@ -1838,6 +1913,49 @@ server <- function(input, output, session) {
       foCreateModal(title = "Buy House and AirBnB", 
                     verbatim_id = "buyhousenandairbnb_money_years",
                     income_txt = "gains")
+    })
+    
+    set_enabled_feature_suggestion_box <- function(enabled){
+      if(enabled){
+        shinyjs::enable("textinput_name")
+        shinyjs::enable("textinput_org")
+        shinyjs::enable("textinput_email")
+        shinyjs::enable("message_type")
+        shinyjs::enable("textinput_message")
+        shinyjs::enable("buttonLeaveFeedback")
+      } else {
+        shinyjs::disable("textinput_name")
+        shinyjs::disable("textinput_org")
+        shinyjs::disable("textinput_email")
+        shinyjs::disable("message_type")
+        shinyjs::disable("textinput_message")
+        shinyjs::disable("buttonLeaveFeedback")
+      }
+    }
+    
+    current_message_type <- reactive({
+      switch(as.numeric(input$message_type), "Report an Error", "Comment", "Suggestion")
+    })
+    
+    observeEvent(input$buttonLeaveFeedback, {
+      if(nchar(input$textinput_message) > 0){
+        category = current_message_type()
+        name = input$textinput_name
+        email = input$textinput_email
+        org = input$textinput_org
+        message = input$textinput_message
+        # main_logging(paste("Left a Feedback - Category: ", category, sep =))
+        # feedback_logging(paste(current_message_type(), " - Name: ", name, ", Org: ", org, ", Email: ", email, "\nMessage: ", message, sep = ""))
+        set_enabled_feature_suggestion_box(enabled=F)
+        delay(300, set_enabled_feature_suggestion_box(enabled=T))
+        delay(300, toastr_success("Your response has been saved. Thank you!", closeButton = F))
+        
+        version = ""
+        # version = version_text()
+        foSendEmail(category, name, org, email, message, version, app_name = "MortgageCalculator", sendername = "ShinyServer")
+      } else {
+        toastr_warning("The message field cannot be empty.", closeButton = F)
+      }
     })
     
     # uioutput_keepincheckingaccount
